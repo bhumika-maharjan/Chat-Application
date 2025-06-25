@@ -1,4 +1,5 @@
-fastapi
+fastapi[standard]
 pyjwt
 alembic
-psycopg2-binary
+sqlalchemy
+websockets
