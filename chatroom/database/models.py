@@ -28,7 +28,7 @@ class Chatroom(Base):
     roomname = Column(String, nullable=False)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     is_private = Column(Boolean, nullable=False)
-    is_deleted = Column(Boolean, nullable=False)
+    is_deleted = Column(Boolean, default=False)
     created_at = Column(DateTime, default=func.now())
 
     # Creator of the room
@@ -43,7 +43,7 @@ class RoomMembers(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     room_id = Column(Integer, ForeignKey("chatroom.id"), nullable=False)
-    is_admin = Column(Boolean, nullable=False, default=False)
+    is_admin = Column(Boolean,default=False)
     joined_at = Column(DateTime, default=func.now())
 
     # Relationships
