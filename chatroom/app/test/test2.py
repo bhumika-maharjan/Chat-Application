@@ -3,6 +3,7 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from database.models import User, Message, RoomMembers
+from app.test.validation import check_user_inroom
 
 app = FastAPI()
 
@@ -164,13 +165,19 @@ async def left_chat(userid: int, chatid: int, db: Session = Depends(get_db)):
     if not userinfo:
         return {"error": "User not found"}
 
-    full_name = f"{userinfo.first_name} {userinfo.last_name}"
-    msg_text = f"{full_name} has left the chat."
-    stored_msg = store_and_return_message(userid, chatid, msg_text)
+    membership = check_user_inroom(userid, chatid, db)
+    if membership:
+        full_name = f"{userinfo.first_name} {userinfo.last_name}"
+        msg_text = f"{full_name} has left the chat."
+        stored_msg = store_and_return_message(userid, chatid, msg_text)
 
-    db.query(RoomMembers).filter_by(user_id=userid, room_id=chatid).delete()
-    db.commit()
-    # Step 4: Broadcast to all users in room
-    await manager.brodcast(f"{stored_msg['message']}",chatid)
+        db.query(RoomMembers).filter_by(user_id=userid, room_id=chatid).delete()
+        db.commit()
 
-    return {"message": "Leave message stored and broadcasted"}
+        await manager.brodcast(f"{stored_msg['message']}", chatid)
+
+        return {"message": "Leave message stored and broadcasted"}
+    else:
+        return {"message": "No user in this room"}
+
+

@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from database.models import User,Chatroom,RoomMembers
+from app.test.validation import check_user_inroom
 
 # Initialize FastAPI app
 app = FastAPI()
@@ -64,17 +65,19 @@ def get_room(db: Session = Depends(get_db)):
 
 @app.post("/joingroup")
 def join_room(members: JoinRoom, db: Session = Depends(get_db)):
-    # Check if room exists
     room = db.query(Chatroom).filter(Chatroom.id == members.room_id).first()
     if not room:
         raise HTTPException(status_code=404, detail="Chatroom not found")
+    user_exist = check_user_inroom(members.user_id,members.room_id,db)
+    if user_exist:
+        return {"message" : "Already in chat"}
+    else:
+        new_member = RoomMembers(
+            user_id=members.user_id,
+            room_id=members.room_id,
+            is_admin=False
+        )
+        db.add(new_member)
+        db.commit()
 
-    new_member = RoomMembers(
-        user_id=members.user_id,
-        room_id=members.room_id,
-        is_admin=False
-    )
-    db.add(new_member)
-    db.commit()
-
-    return {"message": f"Joined chat room '{room.roomname}' successfully"}
+        return {"message": f"Joined chat room '{room.roomname}' successfully"}
