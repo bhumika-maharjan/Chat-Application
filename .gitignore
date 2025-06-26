@@ -1,1 +1,6 @@
 ./virtual_environment
+.env
+.vscode
+**/__pycache__/
+*.pyc
+alembic/versions/*.pyc
