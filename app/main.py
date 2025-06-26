@@ -1,16 +1,11 @@
 from fastapi import FastAPI, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from jose import jwt
-from datetime import datetime,timedelta, timezone
+from fastapi.security import OAuth2PasswordBearer
 from routes.auth import router
 
 
 from app.database import SessionLocal, engine
-from app.models import Base, User
-from app.schemas import UserCreate, UserLogin, UserResponse
-from app.utils import hash_password, verify_password
-from app.config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
+from app.models import Base
 
 
 Base.metadata.create_all(bind=engine)
@@ -26,5 +21,3 @@ def get_db():
         yield db
     finally:
         db.close()
-
-
