@@ -1,11 +1,8 @@
-from fastapi import FastAPI, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from fastapi import FastAPI
 from fastapi.security import OAuth2PasswordBearer
 from app.routes import communication,chats,auth
-from routes.auth import router
 
-
-from app.database import SessionLocal, engine
+from app.database import engine
 from app.models import Base
 
 

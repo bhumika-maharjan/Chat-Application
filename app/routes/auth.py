@@ -6,9 +6,9 @@ from datetime import datetime, timedelta, timezone
 
 from app.database import SessionLocal
 from database.models import User
-from schemas import UserCreate, UserLogin, UserResponse
-from utils import hash_password, verify_password
-from config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
+from app.schemas import UserCreate, UserLogin, UserResponse
+from app.utils import hash_password, verify_password
+from app.config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
 
 router = APIRouter()
 
