@@ -14,7 +14,6 @@ html = """
     <head><title>Chat</title></head>
     <body>
         <form onsubmit="CreateConnection(event)">
-            <input id="userid" placeholder="Enter user id"/>
             <input id="roomid" placeholder="Enter room id"/>
             <input id="token" placeholder="Enter token" />
             <button>Connect</button>
@@ -24,6 +23,10 @@ html = """
             <input id="message" placeholder="Enter Message"/>
             <button>Send Msg</button>
         </form>
+        <form onsubmit="SendFile(event)">
+            <input type="file" id="fileInput" />
+            <button>Send File</button>
+        </form>
         <ul id="messages"></ul>
     </body>
     <script>
@@ -31,6 +34,12 @@ html = """
 
         function CreateConnection(event){
             event.preventDefault(); 
+
+            if (ws !== null && ws.readyState === WebSocket.OPEN) {
+                alert("Already connected!");
+                return;
+            }
+
             const userid = document.getElementById("userid").value;
             const roomid = document.getElementById("roomid").value;
             const token = document.getElementById("token").value;
@@ -42,6 +51,10 @@ html = """
                 const content = document.createTextNode(event.data);
                 message.appendChild(content);
                 document.getElementById('messages').appendChild(message);
+            };
+
+            ws.onclose = () => {
+                ws = null;
             };
         }
 
@@ -78,7 +91,7 @@ async def websocket_endpoint(websocket: WebSocket, roomid : str, db: Session = D
             data = await websocket.receive_text()
             stored_msg = store_and_return_message(userid, roomid, data)
 
-            await manager.brodcast(f"{stored_msg['user']}: {stored_msg['message']}", roomid)
+            await manager.brodcast(f"{stored_msg['user']}: {stored_msg['message']} \t Timestamp:{stored_msg['sent_at']} ", roomid)
 
     except WebSocketDisconnect:
         manager.disconnect(websocket, roomid)
@@ -89,15 +102,15 @@ async def send_past_messages_to_user(websocket: WebSocket, roomid: int):
     db = SessionLocal()
     try:
         results = (
-            db.query(Message.content, User.first_name,User.last_name)
+            db.query(Message.content, User.first_name,User.last_name, Message.sent_at)
             .join(User, Message.sender_id == User.id)
             .filter(Message.room_id == roomid)
             .order_by(Message.sent_at)
             .all()
         )
 
-        for content, first_name, last_name in results:
-            await websocket.send_text(f"{first_name} {last_name}: {content}")
+        for content, first_name, last_name, time in results:
+            await websocket.send_text(f"{first_name} {last_name}: {content} \t TimeStamp:{time}")
     finally:
         db.close()
 
@@ -117,7 +130,9 @@ def store_and_return_message(userid: int, room_id: int, content: str) -> dict:
 
         return {
             "user": user.first_name + user.last_name,
-            "message": new_message.content
+            "message": new_message.content,
+            "sent_at" : new_message.sent_at
+
         }
     finally:
         db.close()
