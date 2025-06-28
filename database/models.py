@@ -66,6 +66,8 @@ class Message(Base):
     room_id = Column(Integer, ForeignKey("chatroom.id"), nullable=False)
     sent_at = Column(DateTime, default=func.now())
     is_deleted = Column(Boolean, default=False)
+    file_url = Column(String, nullable=True)
+    file_type = Column(String, nullable=True)
 
     # Relationships
     sender = relationship("User", back_populates="messages_sent")
