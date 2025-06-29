@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Path
 from sqlalchemy.orm import Session
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt
 from datetime import datetime, timedelta, timezone
+from typing import List
 
-from app.database import SessionLocal
+from database.database import SessionLocal
 from database.models import User
 from app.schemas import UserCreate, UserLogin, UserResponse
 from app.utils import hash_password, verify_password
@@ -54,8 +55,12 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
     }
     access_token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {"access token": f"bearer {access_token}"}
 
-@router.post("/logout")
-def logout():
-    return {"logged_out": True}
+    # return {"access_token": access_token, "token_type": "bearer"}
+
+
+@router.get("/users", response_model=List[UserResponse])
+def get_all_users(db: Session = Depends(get_db)):
+    users = db.query(User).all()
+    return users
