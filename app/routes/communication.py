@@ -1,18 +1,36 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException
 from fastapi.responses import HTMLResponse
-from app.database import get_db, SessionLocal
-from app.schemas import ConnectionManager
-from database.models import RoomMembers, Message, User
+from database.database import get_db, SessionLocal
+from app.utils import ConnectionManager
+from database.models import RoomMembers, Message, User, Chatroom
 from app.validations import get_current_user, check_user_inroom, verify_token
 from sqlalchemy.orm import Session
 
 router = APIRouter()
+
+@router.get("/chatroom/{roomid}")
+def get_chatroom_info(roomid: int, db: Session = Depends(get_db)):
+    room = db.query(Chatroom).filter(Chatroom.id == roomid).first()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    creator = db.query(User).filter(User.id == room.created_by).first()
+    return {
+        "roomname": room.roomname,
+        "creator": f"{creator.first_name} {creator.last_name}",
+        "created_at": room.created_at.isoformat()
+    }
 
 html = """
 <!DOCTYPE html>
 <html>
     <head><title>Chat</title></head>
     <body>
+        <div id="room-info">
+            <p><strong>Room:</strong> <span id="roomname"></span></p>
+            <p><strong>Creator:</strong> <span id="creator"></span></p>
+            <p><strong>Created At:</strong> <span id="created_at"></span></p>
+        </div>
         <form onsubmit="CreateConnection(event)">
             <input id="userid" placeholder="Enter user id"/>
             <input id="roomid" placeholder="Enter room id"/>
@@ -35,6 +53,14 @@ html = """
             const roomid = document.getElementById("roomid").value;
             const token = document.getElementById("token").value;
 
+            fetch(`http://localhost:8000/chatroom/${roomid}`)
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById("roomname").innerText = data.roomname;
+                    document.getElementById("creator").innerText = data.creator;
+                    document.getElementById("created_at").innerText = new Date(data.created_at).toLocaleString();
+                });
+        
             ws = new WebSocket(`ws://localhost:8000/chat/${roomid}?token=${token}`);
 
             ws.onmessage = (event) => {
@@ -54,6 +80,8 @@ html = """
 </html>
 """
 
+
+
 @router.get("/home")
 def display_home():
     return HTMLResponse(html)
@@ -68,7 +96,7 @@ async def websocket_endpoint(websocket: WebSocket, roomid : str, db: Session = D
     userid = int(userinfo.id)
     roomid = int(roomid)
 
-    print("uder id",userid)
+    print("user id",userid)
     await manager.connect(websocket, roomid)
 
     await send_past_messages_to_user(websocket, roomid)
