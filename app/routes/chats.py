@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from app.schemas import CreateTable, JoinRoom
 from database.models import Chatroom, RoomMembers, User
-from app.database import get_db
+from database.database import get_db
 from sqlalchemy.orm import Session
 from app.validations import get_current_user, check_user_inroom
 
@@ -55,3 +55,4 @@ def join_room(members: JoinRoom, db: Session = Depends(get_db), user : User = De
         db.commit()
 
         return {"message": f"Joined chat room '{room.roomname}' successfully"}
+    

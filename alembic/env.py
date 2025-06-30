@@ -2,7 +2,7 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
-from app.models import Base
+from database.models import Base
 from app.config import DATABASE_URL
 
 from logging.config import fileConfig

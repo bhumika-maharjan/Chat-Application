@@ -2,7 +2,7 @@ from fastapi import Header, HTTPException, Depends,Query
 from database.models import User, RoomMembers
 from app.config import SECRET_KEY,ALGORITHM
 import jwt
-from app.database import get_db
+from database.database import get_db
 from sqlalchemy.orm import Session
 
 def get_current_user(authorization: str | None = Header(...), db: Session = Depends(get_db)):
