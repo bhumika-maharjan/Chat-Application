@@ -1,28 +1,36 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException
 from fastapi.responses import HTMLResponse
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
-from database.models import User, Message, RoomMembers
-from app.test.validation import check_user_inroom
+from database.database import get_db, SessionLocal
+from app.utils import ConnectionManager
+from database.models import RoomMembers, Message, User, Chatroom
+from app.validations import get_current_user, check_user_inroom, verify_token
+from sqlalchemy.orm import Session
 
-app = FastAPI()
+router = APIRouter()
 
-DATABASE_URL = "postgresql://postgres:admin@localhost:5432/chatapp"
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+@router.get("/chatroom/{roomid}")
+def get_chatroom_info(roomid: int, db: Session = Depends(get_db)):
+    room = db.query(Chatroom).filter(Chatroom.id == roomid).first()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+    creator = db.query(User).filter(User.id == room.created_by).first()
+    return {
+        "roomname": room.roomname,
+        "creator": f"{creator.first_name} {creator.last_name}",
+        "created_at": room.created_at.isoformat()
+    }
 
 html = """
 <!DOCTYPE html>
 <html>
     <head><title>Chat</title></head>
     <body>
+        <div id="room-info">
+            <p><strong>Room:</strong> <span id="roomname"></span></p>
+            <p><strong>Creator:</strong> <span id="creator"></span></p>
+            <p><strong>Created At:</strong> <span id="created_at"></span></p>
+        </div>
         <form onsubmit="CreateConnection(event)">
             <input id="userid" placeholder="Enter user id"/>
             <input id="roomid" placeholder="Enter room id"/>
@@ -45,7 +53,15 @@ html = """
             const roomid = document.getElementById("roomid").value;
             const token = document.getElementById("token").value;
 
-            ws = new WebSocket(`ws://localhost:8000/users/${userid}/?q=${roomid}&token=${token}`);
+            fetch(`http://localhost:8000/chatroom/${roomid}`)
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById("roomname").innerText = data.roomname;
+                    document.getElementById("creator").innerText = data.creator;
+                    document.getElementById("created_at").innerText = new Date(data.created_at).toLocaleString();
+                });
+        
+            ws = new WebSocket(`ws://localhost:8000/chat/${roomid}?token=${token}`);
 
             ws.onmessage = (event) => {
                 const message = document.createElement("li");
@@ -64,48 +80,23 @@ html = """
 </html>
 """
 
-@app.get("/home")
+
+
+@router.get("/home")
 def display_home():
     return HTMLResponse(html)
 
-def verify_token(token: str):
-    return token == "mystr"
-
-class ConnectionManager:
-    def __init__(self):
-        self.rooms_active_user: dict[int, list[WebSocket]] = {}
-
-    async def connect(self, websocket: WebSocket, roomid: int):
-        await websocket.accept()
-        if roomid not in self.rooms_active_user:
-            self.rooms_active_user[roomid] = []
-        self.rooms_active_user[roomid].append(websocket)
-
-    async def brodcast(self, msg: str, roomid: int):
-        if roomid in self.rooms_active_user:
-            for user in self.rooms_active_user[roomid]:
-                await user.send_text(msg)
-
-    def disconnect(self, websocket: WebSocket, roomid: int):
-        if roomid in self.rooms_active_user:
-            self.rooms_active_user[roomid].remove(websocket)
-            if not self.rooms_active_user[roomid]:
-                del self.rooms_active_user[roomid]
-
 manager = ConnectionManager()
 
-@app.websocket("/users/{userid}/")
-async def websocket_endpoint(websocket: WebSocket, userid: str):
-    roomid = websocket.query_params.get("q")
-    token = websocket.query_params.get("token")
+@router.websocket("/chat/{roomid}")
+async def websocket_endpoint(websocket: WebSocket, roomid : str, db: Session = Depends(get_db)):
 
-    if not verify_token(token):
-        await websocket.close(code=1008)
-        return
-
-    userid = int(userid)
+    token =  websocket.query_params.get("token")
+    userinfo = verify_token(token, db)
+    userid = int(userinfo.id)
     roomid = int(roomid)
 
+    print("user id",userid)
     await manager.connect(websocket, roomid)
 
     await send_past_messages_to_user(websocket, roomid)
@@ -120,6 +111,7 @@ async def websocket_endpoint(websocket: WebSocket, userid: str):
     except WebSocketDisconnect:
         manager.disconnect(websocket, roomid)
         await manager.brodcast(f"{userid} disconnected", roomid)
+
 
 async def send_past_messages_to_user(websocket: WebSocket, roomid: int):
     db = SessionLocal()
@@ -158,26 +150,26 @@ def store_and_return_message(userid: int, room_id: int, content: str) -> dict:
     finally:
         db.close()
 
-@app.post('/leftchat')
-async def left_chat(userid: int, chatid: int, db: Session = Depends(get_db)):
-    userinfo = db.query(User.first_name, User.last_name).filter_by(id=userid).first()
+@router.get('/leftchat/{roomid}')
+async def left_chat( roomid: int, db: Session = Depends(get_db), user : User = Depends(get_current_user)):
+    userid =  user.id
+    userinfo = db.query(User.first_name, User.last_name).filter_by(id= userid).first()
 
     if not userinfo:
         return {"error": "User not found"}
 
-    membership = check_user_inroom(userid, chatid, db)
+    membership = check_user_inroom( userid, roomid, db)
     if membership:
         full_name = f"{userinfo.first_name} {userinfo.last_name}"
         msg_text = f"{full_name} has left the chat."
-        stored_msg = store_and_return_message(userid, chatid, msg_text)
+        stored_msg = store_and_return_message( userid , roomid, msg_text)
 
-        db.query(RoomMembers).filter_by(user_id=userid, room_id=chatid).delete()
+        db.query(RoomMembers).filter_by(user_id=userid, room_id=roomid).delete()
         db.commit()
 
-        await manager.brodcast(f"{stored_msg['message']}", chatid)
+        await manager.brodcast(f"{stored_msg['message']}", roomid)
 
         return {"message": "Leave message stored and broadcasted"}
     else:
         return {"message": "No user in this room"}
-
 
