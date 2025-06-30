@@ -5,22 +5,15 @@ from jose import jwt
 from datetime import datetime, timedelta, timezone
 from typing import List
 
-from database.database import SessionLocal
 from database.models import User
 from app.schemas import UserCreate, UserLogin, UserResponse
 from app.utils import hash_password, verify_password
 from app.config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
+from app.database import get_db
 
 router = APIRouter()
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 @router.post("/register", response_model=UserResponse)
 def register(user: UserCreate, db: Session = Depends(get_db)):
