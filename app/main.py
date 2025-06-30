@@ -15,11 +15,8 @@ app = FastAPI()
 app.include_router(chats.router)
 app.include_router(communication.router)
 app.include_router(auth.router)
-<<<<<<< HEAD
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
-=======
 app.include_router(profile.router)
->>>>>>> 350c42eee861b6be1479764616a1489415c75f1b
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl = "/login")
