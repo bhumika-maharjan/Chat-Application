@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from app.schemas import CreateTable, JoinRoom
 from database.models import Chatroom, RoomMembers, User
-from database.database import get_db
+from app.database import get_db
 from sqlalchemy.orm import Session
-from app.validations import get_current_user, check_user_inroom
+from app.utils import get_current_user, check_user_inroom
 
 router = APIRouter()
 

@@ -1,9 +1,9 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException
 from fastapi.responses import HTMLResponse
-from database.database import get_db, SessionLocal
-from app.utils import ConnectionManager
+from app.database import get_db, SessionLocal
+from app.connection_manager import ConnectionManager
 from database.models import RoomMembers, Message, User, Chatroom
-from app.validations import get_current_user, check_user_inroom, verify_token
+from app.utils import get_current_user, check_user_inroom, verify_token
 from sqlalchemy.orm import Session
 import json
 import base64
