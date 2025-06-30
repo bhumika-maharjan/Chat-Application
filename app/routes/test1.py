@@ -1,11 +1,10 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
 from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from app.database import get_db, SessionLocal
-from app.schemas import ConnectionManager
+from app.connection_manager import ConnectionManager
 from database.models import RoomMembers, Message, User
-from app.validations import get_current_user, check_user_inroom, verify_token
+from app.utils import get_current_user, check_user_inroom, verify_token
 import os
 import json
 import base64
