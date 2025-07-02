@@ -48,6 +48,8 @@ class ChangePassword(BaseModel):
 class CreateTable(BaseModel):
     room_name: str
     is_private: bool
+    password: Optional[str] = None 
 
 class JoinRoom(BaseModel):
     room_id: int
+    password: Optional[str] = None

@@ -3,7 +3,7 @@ from fastapi.responses import HTMLResponse
 from app.database import get_db, SessionLocal
 from app.connection_manager import ConnectionManager
 from database.models import RoomMembers, Message, User, Chatroom
-from app.utils import get_current_user, check_user_inroom, verify_token
+from app.utils import get_current_user, check_user_inroom, verify_token, verify_password
 from sqlalchemy.orm import Session
 import json
 import base64
@@ -38,6 +38,7 @@ html = """
         <form onsubmit="CreateConnection(event)">
             <input id="roomid" placeholder="Enter room id"/>
             <input id="token" placeholder="Enter token" />
+            <input id="roompassword" placeholder="Enter room password (if private)" />
             <button>Connect</button>
         </form>
         <hr>
@@ -61,6 +62,7 @@ html = """
 
             const roomid = document.getElementById("roomid").value;
             const token = document.getElementById("token").value;
+            const password = document.getElementById("roompassword").value;
 
             fetch(`http://localhost:8000/chatroom/${roomid}`)
                 .then(response => response.json())
@@ -70,7 +72,7 @@ html = """
                     document.getElementById("created_at").innerText = new Date(data.created_at).toLocaleString();
                 });
         
-            ws = new WebSocket(`ws://localhost:8000/chat/${roomid}?token=${token}`);
+            ws = new WebSocket(`ws://localhost:8000/chat/${roomid}?token=${token}&password=${encodeURIComponent(password)}`);
 
             ws.onmessage = (event) => {
                 const message = document.createElement("li");
@@ -186,9 +188,25 @@ manager = ConnectionManager()
 async def websocket_endpoint(websocket: WebSocket, roomid : str, db: Session = Depends(get_db)):
 
     token =  websocket.query_params.get("token")
+    password = websocket.query_params.get("password", "")
     userinfo = verify_token(token, db)
     userid = int(userinfo.id)
     roomid = int(roomid)
+
+    room = db.query(Chatroom).filter(Chatroom.id == roomid).first()
+    if not room:
+        await websocket.close(code=1008)
+        return
+
+    is_member = check_user_inroom(userid, roomid, db)
+    if not is_member:
+        await websocket.close(code=1008)
+        return
+
+    if room.is_private:
+        if not password or not verify_password(password, room.password):
+            await websocket.close(code=1008)
+            return
 
     await manager.connect(websocket, roomid)
     await send_past_messages_to_user(websocket, roomid)
