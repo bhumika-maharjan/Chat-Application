@@ -1,4 +1,4 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException, Header
 from fastapi.responses import HTMLResponse
 from app.database import get_db, SessionLocal
 from app.connection_manager import ConnectionManager
@@ -13,34 +13,42 @@ import os
 router = APIRouter()
 
 @router.get("/chatroom/{roomid}")
-def get_chatroom_info(roomid: int, db: Session = Depends(get_db)):
+def get_chatroom_info(
+    roomid: int,
+    token: str = Header(...), 
+):
+    db = SessionLocal()
+    print("checking")
+    user = verify_token(token, db)  
     room = db.query(Chatroom).filter(Chatroom.id == roomid).first()
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
 
     creator = db.query(User).filter(User.id == room.created_by).first()
     return {
+        "user" : f"{user.first_name} {user.last_name}",
         "roomname": room.roomname,
         "creator": f"{creator.first_name} {creator.last_name}",
         "created_at": room.created_at.isoformat()
     }
+
 
 html = """
 <!DOCTYPE html>
 <html>
     <head><title>Chat</title></head>
     <body>
-        <div id="room-info">
-            <p><strong>Room:</strong> <span id="roomname"></span></p>
-            <p><strong>Creator:</strong> <span id="creator"></span></p>
-            <p><strong>Created At:</strong> <span id="created_at"></span></p>
-        </div>
         <form onsubmit="CreateConnection(event)">
             <input id="roomid" placeholder="Enter room id"/>
             <input id="token" placeholder="Enter token" />
             <button>Connect</button>
         </form>
         <hr>
+        <div id="room-info" style="display:none;">
+            <p><strong>Logged in User:</strong> <span id="user"></span></p>
+            <p><strong>Room:</strong> <span id="roomname"></span></p>
+            <p><strong>Creator:</strong> <span id="creator"></span></p>
+        </div>
         <form onsubmit="SendMsg(event)">
             <input id="message" placeholder="Enter Message"/>
             <input type="file" id="fileInput" />
@@ -62,13 +70,29 @@ html = """
             const roomid = document.getElementById("roomid").value;
             const token = document.getElementById("token").value;
 
-            fetch(`http://localhost:8000/chatroom/${roomid}`)
-                .then(response => response.json())
-                .then(data => {
-                    document.getElementById("roomname").innerText = data.roomname;
-                    document.getElementById("creator").innerText = data.creator;
-                    document.getElementById("created_at").innerText = new Date(data.created_at).toLocaleString();
-                });
+            fetch(`http://localhost:8000/chatroom/${roomid}`, {
+                headers: {
+                    "token": token
+                }
+            })
+            .then(response => {
+                console.log("Fetching");
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                document.getElementById("user").innerText = data.user;
+                document.getElementById("roomname").innerText = data.roomname;
+                document.getElementById("creator").innerText = data.creator;
+                document.getElementById("room-info").style.display = "block";
+            })
+            .catch(error => {
+                console.error("Fetch failed:", error);
+                alert("Failed to fetch chatroom details.");
+            });
+
         
             ws = new WebSocket(`ws://localhost:8000/chat/${roomid}?token=${token}`);
 
@@ -134,6 +158,8 @@ html = """
 
             ws.onclose = () => {
                 ws = null;
+                document.getElementById("messages").innerHTML = "";
+                document.getElementById("room-info").style.display = "none";
             };
         }
 
@@ -192,6 +218,7 @@ async def websocket_endpoint(websocket: WebSocket, roomid : str, db: Session = D
 
     await manager.connect(websocket, roomid)
     await send_past_messages_to_user(websocket, roomid)
+    await manager.brodcast(f"{userinfo.first_name} {userinfo.last_name} is online.", roomid)
 
     try:
         while True:
@@ -235,7 +262,7 @@ async def websocket_endpoint(websocket: WebSocket, roomid : str, db: Session = D
 
     except WebSocketDisconnect:
         manager.disconnect(websocket, roomid)
-        await manager.brodcast(f"{userid} disconnected", roomid)
+        await manager.brodcast(f"{userinfo.first_name} {userinfo.last_name} is offline", roomid)
 
 
 async def send_past_messages_to_user(websocket: WebSocket, roomid: int):
