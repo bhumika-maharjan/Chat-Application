@@ -34,6 +34,7 @@ class Chatroom(Base):
     is_private = Column(Boolean, nullable=False)
     is_deleted = Column(Boolean, default=False)
     created_at = Column(DateTime, default=func.now())
+    password = Column(String, nullable=True)
 
     # Creator of the room
     creator = relationship("User", back_populates="chatrooms")
