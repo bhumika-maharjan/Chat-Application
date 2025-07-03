@@ -36,9 +36,13 @@ def get_current_user(authorization: str | None = Header(...), db: Session = Depe
     
 def verify_token(obtained_token: str = Query(...), db : Session = Depends(get_db)):
     try:
-        scheme, token = obtained_token.split()
-        if scheme.lower() != "bearer":
-            raise HTTPException(status_code=401, detail="Invalid token scheme")
+        # scheme, token = obtained_token.split()
+        # if scheme.lower() != "bearer":
+        #     raise HTTPException(status_code=401, detail="Invalid token scheme")
+        if obtained_token.lower().startswith("bearer "):
+            token = obtained_token[7:]  # strip first 7 chars (bearer + space)
+        else:
+            token = obtained_token
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id = int(payload.get("sub"))
         print(f"user_id from token: {user_id}")

@@ -10,21 +10,17 @@ router = APIRouter()
 @router.post("/creategroup")
 def create_table(tableinfo: CreateTable, db: Session = Depends(get_db), user : User = Depends(get_current_user)):
 
-    if tableinfo.is_private and not tableinfo.password:
-        raise HTTPException(status_code=400, detail="Password required for private room")
-    
-    hashed_password = (
-        hash_password(tableinfo.password) if tableinfo.is_private else None
-    )
+    is_private = bool(tableinfo.password) 
+
+    hashed_password = hash_password(tableinfo.password) if is_private else None
     # Step 1: Create chatroom
     new_room = Chatroom(
-        roomname=tableinfo.room_name,
-        is_private=tableinfo.is_private,
-        is_deleted=False,
-        created_by= user.id,
-        password=hashed_password
-        
-    )
+    roomname=tableinfo.room_name,
+    is_private=is_private,
+    is_deleted=False,
+    created_by=user.id,
+    password=hashed_password
+)
     db.add(new_room)
     db.commit()
     db.refresh(new_room)
