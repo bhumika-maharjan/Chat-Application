@@ -31,7 +31,9 @@ class User(Base):
     # Many-to-many: User is member of many chatrooms
     member_of = relationship("RoomMembers", back_populates="user")
     # One-to-many: User sends many messages
-    messages_sent = relationship("Message", back_populates="sender")
+    messages_sent = relationship("Message", back_populates="sender", foreign_keys="Message.sender_id")
+    # One-to-many: User receives direct messages
+    messages_received = relationship("Message", back_populates="receiver", foreign_keys="Message.receiver_id")
 
 
 class Chatroom(Base):
@@ -41,7 +43,6 @@ class Chatroom(Base):
     roomname = Column(String, nullable=False)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     is_private = Column(Boolean, nullable=False)
-    is_deleted = Column(Boolean, default=False)
     created_at = Column(DateTime, default=func.now())
     password = Column(String, nullable=True)
 
@@ -73,12 +74,14 @@ class Message(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     content = Column(Text, nullable=False)
     sender_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    room_id = Column(Integer, ForeignKey("chatroom.id"), nullable=False)
+    room_id = Column(Integer, ForeignKey("chatroom.id"), nullable=True)
+    receiver_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     sent_at = Column(DateTime, default=func.now())
-    is_deleted = Column(Boolean, default=False)
+    is_read = Column(Boolean, default=False)
     file_url = Column(String, nullable=True)
     file_type = Column(String, nullable=True)
 
     # Relationships
-    sender = relationship("User", back_populates="messages_sent")
+    sender = relationship("User", back_populates="messages_sent", foreign_keys=[sender_id])
+    receiver = relationship("User", back_populates="messages_received", foreign_keys=[receiver_id])
     room = relationship("Chatroom", back_populates="messages")
