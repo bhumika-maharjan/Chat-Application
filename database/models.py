@@ -1,9 +1,15 @@
 from sqlalchemy import (
-    Column, Integer, String, Boolean, DateTime, ForeignKey, Text, func
+    Column, Integer, String, Boolean, DateTime, ForeignKey, Text, func, Enum
 )
 from sqlalchemy.orm import declarative_base, relationship
+import enum
 
 Base = declarative_base()
+
+class MessageStatus(str, enum.Enum):
+    sent = "sent"
+    delivered = "delivered"
+    read = "read"
 
 class User(Base):
     __tablename__ = "users"
@@ -16,6 +22,8 @@ class User(Base):
     email = Column(String, unique=True, nullable=False)
     password = Column(String, nullable=False)
     created_at = Column(DateTime, default=func.now())
+    file_url = Column(String, nullable=True)
+    file_type = Column(String, nullable=True)
 
     # One-to-many: User can create many chatrooms
     chatrooms = relationship("Chatroom", back_populates="creator")
@@ -68,7 +76,7 @@ class Message(Base):
     room_id = Column(Integer, ForeignKey("chatroom.id"), nullable=True)
     receiver_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     sent_at = Column(DateTime, default=func.now())
-    is_read = Column(Boolean, default=False)
+    status = Column(Enum(MessageStatus), default=MessageStatus.sent)
     file_url = Column(String, nullable=True)
     file_type = Column(String, nullable=True)
 
