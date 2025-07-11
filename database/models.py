@@ -73,3 +73,22 @@ class Message(Base):
     # Relationships
     sender = relationship("User", back_populates="messages_sent")
     room = relationship("Chatroom", back_populates="messages")
+
+class PrivateMessage(Base):
+    __tablename__ = "private_messages"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    sender_id = Column(Integer, ForeignKey("users.id"), nullable = False)
+    receiver_id = Column(Integer, ForeignKey("users.id"), nullable = False)
+    sent_at = Column(DateTime, default=func.now())
+    content = Column(String) 
+    file_url = Column(String, nullable=True)
+    file_type = Column(String, nullable=True)
+
+    sender = relationship("User", foreign_keys=[sender_id])
+    receiver = relationship("User", foreign_keys=[receiver_id])
+
+
+
+
+    
