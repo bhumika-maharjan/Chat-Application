@@ -24,8 +24,8 @@ def update_profile(updated:  schemas.UserUpdate, db: Session = Depends(get_db), 
 
 @router.put("/change-password")
 def change_password(payload: schemas.ChangePassword, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    if not verify_password(payload.old_password, current_user.password):
+    if not verify_password(payload.old_password, current_user.password): #type: ignore
         raise HTTPException(status_code=400, detail = "old password is incorrect")
-    current_user.password = hash_password(payload.new_password)
+    current_user.password = hash_password(payload.new_password) # type: ignore
     db.commit()
     return {"detail": "Password updated successfully"}    
