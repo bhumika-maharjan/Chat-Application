@@ -1,10 +1,11 @@
 from fastapi import FastAPI
+from fastapi.security import OAuth2PasswordBearer
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.config import UPLOAD_DIR
 from app.database import engine
-from app.routes import auth, chats, communication, profile
+from app.routes import auth, chats, communication, profile, search
 from database.models import Base
 
 Base.metadata.create_all(bind=engine)

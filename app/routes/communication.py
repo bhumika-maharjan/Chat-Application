@@ -336,7 +336,6 @@ def store_and_return_message(userid: int, room_id: int, content: str, file_url :
             "file_url": new_message.file_url,
             "file_type": new_message.file_type,
             "sent_at" : new_message.sent_at
-
         }
     finally:
         db.close()
