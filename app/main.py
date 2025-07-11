@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.security import OAuth2PasswordBearer
-from app.routes import communication,chats,auth, profile, user_to_user
+from app.routes import communication,chats,auth, home, profile, user_to_user
 from fastapi.staticfiles import StaticFiles
 from app.database import engine
 from database.models import Base
@@ -27,4 +27,5 @@ app.include_router(communication.router)
 app.include_router(auth.router)
 app.include_router(profile.router)
 app.include_router(user_to_user.router)
+app.include_router(home.router)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")

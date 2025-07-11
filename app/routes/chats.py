@@ -17,7 +17,6 @@ def create_table(tableinfo: CreateTable, db: Session = Depends(get_db), user : U
     new_room = Chatroom(
     roomname=tableinfo.room_name,
     is_private=is_private,
-    is_deleted=False,
     created_by=user.id,
     password=hashed_password
 )
