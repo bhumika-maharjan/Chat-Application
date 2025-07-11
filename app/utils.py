@@ -36,9 +36,6 @@ def get_current_user(authorization: str | None = Header(...), db: Session = Depe
     
 def verify_token(obtained_token: str = Query(...), db : Session = Depends(get_db)):
     try:
-        # scheme, token = obtained_token.split()
-        # if scheme.lower() != "bearer":
-        #     raise HTTPException(status_code=401, detail="Invalid token scheme")
         if obtained_token.lower().startswith("bearer "):
             token = obtained_token[7:]  # strip first 7 chars (bearer + space)
         else:
@@ -47,6 +44,7 @@ def verify_token(obtained_token: str = Query(...), db : Session = Depends(get_db
         user_id = int(payload.get("sub"))
         print(f"user_id from token: {user_id}")
         user = db.query(User).filter_by(id = user_id).first()
+
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         return user
@@ -58,3 +56,7 @@ def verify_token(obtained_token: str = Query(...), db : Session = Depends(get_db
 def check_user_inroom(userid: int, roomid: int, db: Session):
     membership = db.query(RoomMembers).filter_by(user_id=userid, room_id=roomid).first()
     return membership is not None
+
+def verify_user(id : int, db:Session):
+    userexist = db.query(User).filter_by(id = id).first()
+    return userexist is not None
