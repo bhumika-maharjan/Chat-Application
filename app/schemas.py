@@ -1,6 +1,5 @@
 from pydantic import BaseModel, EmailStr, StringConstraints
 from typing import Optional, Annotated
-from fastapi import WebSocket
 from datetime import datetime
 
 class UserCreate(BaseModel):
@@ -52,3 +51,11 @@ class CreateTable(BaseModel):
 class JoinRoom(BaseModel):
     room_id: int
     password: Optional[str] = None
+
+class LastMessageResponse(BaseModel):
+    roomname: str
+    content: str
+    timestamp: str 
+
+    class Config:
+        orm_mode = True

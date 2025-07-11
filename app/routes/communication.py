@@ -204,7 +204,7 @@ UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
-@router.get("/home")
+@router.get("/group")
 def display_home():
     return HTMLResponse(html)
 
@@ -212,7 +212,6 @@ manager = ConnectionManager()
 
 @router.websocket("/chat/{roomid}")
 async def websocket_endpoint(websocket: WebSocket, roomid : str, db: Session = Depends(get_db)):
-
     token =  websocket.query_params.get("token")
     password = websocket.query_params.get("password", "")
     userinfo = verify_token(token, db)
@@ -236,7 +235,7 @@ async def websocket_endpoint(websocket: WebSocket, roomid : str, db: Session = D
 
     await manager.connect(websocket, roomid)
     await send_past_messages_to_user(websocket, roomid)
-    await manager.brodcast(f"{userinfo.first_name} {userinfo.last_name} is online.", roomid)
+    # await manager.brodcast(f"{userinfo.first_name} {userinfo.last_name} is online.", roomid)
 
     try:
         while True:
@@ -280,7 +279,7 @@ async def websocket_endpoint(websocket: WebSocket, roomid : str, db: Session = D
 
     except WebSocketDisconnect:
         manager.disconnect(websocket, roomid)
-        await manager.brodcast(f"{userinfo.first_name} {userinfo.last_name} is offline", roomid)
+        # await manager.brodcast(f"{userinfo.first_name} {userinfo.last_name} is offline", roomid)
 
 
 async def send_past_messages_to_user(websocket: WebSocket, roomid: int):
