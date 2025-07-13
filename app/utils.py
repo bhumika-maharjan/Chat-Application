@@ -17,9 +17,6 @@ def verify_password(plain_password:str, hashed_password: str)->bool:
 
 def get_current_user(authorization: str | None = Header(...), db: Session = Depends(get_db)):
     try:
-        if authorization is None:
-            raise HTTPException(status_code=401, detail="Authorization header missing")
-        
         scheme, token = authorization.split()
         if scheme.lower() != "bearer":
             raise HTTPException(status_code=401, detail="Invalid token scheme")
@@ -61,19 +58,3 @@ def verify_token(obtained_token: str = Query(...), db : Session = Depends(get_db
 def check_user_inroom(userid: int, roomid: int, db: Session):
     membership = db.query(RoomMembers).filter_by(user_id=userid, room_id=roomid).first()
     return membership is not None
-def decode_token(token: str, db: Session):
-    try:
-        if token.lower().startswith("bearer "):
-            token = token[7:]
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id = int(payload.get("sub"))
-        print(f"user_id from token: {user_id}")
-        user = db.query(User).filter_by(id=user_id).first()
-        if not user:
-            raise ValueError("User not found")
-        return user
-    except jwt.ExpiredSignatureError:
-        raise ValueError("Token has expired")
-    except Exception as e:
-        print("Token decode error:", str(e))
-        raise ValueError("Invalid or missing token")
