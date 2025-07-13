@@ -14,6 +14,7 @@ from fastapi import (
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
+from app.database import SessionLocal, get_db
 from app.connection_manager import ConnectionManager
 from database.models import RoomMembers, Message, User, Chatroom
 from app.utils import get_current_user, check_user_inroom, verify_token, verify_password
