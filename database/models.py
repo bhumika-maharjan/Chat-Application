@@ -1,19 +1,30 @@
-from sqlalchemy import (
-    Column, Integer, String, Boolean, DateTime, ForeignKey, Text, func, Enum
-)
-from sqlalchemy.orm import declarative_base, relationship
 import enum
 
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    func,
+)
+from sqlalchemy.orm import declarative_base, relationship
+
 Base = declarative_base()
+
 
 class MessageStatus(str, enum.Enum):
     sent = "sent"
     delivered = "delivered"
     read = "read"
 
+
 class User(Base):
     __tablename__ = "users"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     username = Column(String, unique=True, nullable=False)
     first_name = Column(String, nullable=False)
@@ -21,6 +32,7 @@ class User(Base):
     last_name = Column(String, nullable=False)
     email = Column(String, unique=True, nullable=False)
     password = Column(String, nullable=False)
+    profile_image = Column(String, nullable=True)
     created_at = Column(DateTime, default=func.now())
     file_url = Column(String, nullable=True)
     file_type = Column(String, nullable=True)
@@ -30,9 +42,13 @@ class User(Base):
     # Many-to-many: User is member of many chatrooms
     member_of = relationship("RoomMembers", back_populates="user")
     # One-to-many: User sends many messages
-    messages_sent = relationship("Message", back_populates="sender", foreign_keys="Message.sender_id")
+    messages_sent = relationship(
+        "Message", back_populates="sender", foreign_keys="Message.sender_id"
+    )
     # One-to-many: User receives direct messages
-    messages_received = relationship("Message", back_populates="receiver", foreign_keys="Message.receiver_id")
+    messages_received = relationship(
+        "Message", back_populates="receiver", foreign_keys="Message.receiver_id"
+    )
 
 
 class Chatroom(Base):
@@ -81,25 +97,10 @@ class Message(Base):
     file_type = Column(String, nullable=True)
 
     # Relationships
-    sender = relationship("User", back_populates="messages_sent", foreign_keys=[sender_id])
-    receiver = relationship("User", back_populates="messages_received", foreign_keys=[receiver_id])
+    sender = relationship(
+        "User", back_populates="messages_sent", foreign_keys=[sender_id]
+    )
+    receiver = relationship(
+        "User", back_populates="messages_received", foreign_keys=[receiver_id]
+    )
     room = relationship("Chatroom", back_populates="messages")
-
-class PrivateMessage(Base):
-    __tablename__ = "private_messages"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    sender_id = Column(Integer, ForeignKey("users.id"), nullable = False)
-    receiver_id = Column(Integer, ForeignKey("users.id"), nullable = False)
-    sent_at = Column(DateTime, default=func.now())
-    content = Column(String) 
-    file_url = Column(String, nullable=True)
-    file_type = Column(String, nullable=True)
-
-    sender = relationship("User", foreign_keys=[sender_id])
-    receiver = relationship("User", foreign_keys=[receiver_id])
-
-
-
-
-    
