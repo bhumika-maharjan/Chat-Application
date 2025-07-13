@@ -1,13 +1,21 @@
 from sqlalchemy import (
-    Column, Integer, String, Boolean, DateTime, ForeignKey, Text, func
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    func,
 )
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
 
+
 class User(Base):
     __tablename__ = "users"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     username = Column(String, unique=True, nullable=False)
     first_name = Column(String, nullable=False)
@@ -15,6 +23,7 @@ class User(Base):
     last_name = Column(String, nullable=False)
     email = Column(String, unique=True, nullable=False)
     password = Column(String, nullable=False)
+    profile_image = Column(String, nullable=True)
     created_at = Column(DateTime, default=func.now())
 
     # One-to-many: User can create many chatrooms
