@@ -81,7 +81,8 @@ class Message(Base):
     file_type = Column(String, nullable=True)
 
     # Relationships
-    sender = relationship("User", back_populates="messages_sent")
+    sender = relationship("User", back_populates="messages_sent", foreign_keys=[sender_id])
+    receiver = relationship("User", back_populates="messages_received", foreign_keys=[receiver_id])
     room = relationship("Chatroom", back_populates="messages")
 
 class PrivateMessage(Base):
