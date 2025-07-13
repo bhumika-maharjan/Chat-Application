@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import UPLOAD_DIR
 from app.database import engine
-from app.routes import auth, chats, communication, home, profile
+from app.routes import auth, chats, communication, home, profile, user_to_user
 from database.models import Base
 
 Base.metadata.create_all(bind=engine)
@@ -33,5 +33,7 @@ app.mount(
     name="profile_images",
 )
 
+
 app.include_router(home.router)
+app.include_router(user_to_user.router)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")

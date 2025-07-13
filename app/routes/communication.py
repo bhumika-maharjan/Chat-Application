@@ -21,19 +21,34 @@ from app.utils import get_current_user, check_user_inroom, verify_token, verify_
 from sqlalchemy.orm import Session
 import json
 import base64
-import uuid
+import json
 import os
+import uuid
 from datetime import datetime
 
+from fastapi import (
+    APIRouter,
+    Depends,
+    Header,
+    HTTPException,
+    WebSocket,
+    WebSocketDisconnect,
+)
+from fastapi.responses import HTMLResponse
+from sqlalchemy.orm import Session
+
+from app.connection_manager import ConnectionManager
+from app.database import SessionLocal, get_db
+from app.utils import check_user_inroom, get_current_user, verify_password, verify_token
+from database.models import Chatroom, Message, RoomMembers, User
+
+
 def json_text(
-        sender: str,
-        message_id : int,
-        text: str,
-        ts: datetime | None = None
-    ) -> dict:
+    sender: str, message_id: int, text: str, ts: datetime | None = None
+) -> dict:
     return {
         "type": "text",
-        "message_id" : message_id,
+        "message_id": message_id,
         "timestamp": ts.strftime("%Y-%m-%d %H:%M:%S"),
         "sender": sender,
         "text": text,
@@ -42,19 +57,20 @@ def json_text(
 
 def json_file(
     sender: str,
-    message_id : int,
+    message_id: int,
     url: str,
     caption: str = "",
     ts: datetime | None = None,
 ) -> dict:
     return {
         "type": "file",
-        "message_id" : message_id,
+        "message_id": message_id,
         "timestamp": ts.strftime("%Y-%m-%d %H:%M:%S"),
         "sender": sender,
         "file_url": url,
         "text": caption,
     }
+
 
 router = APIRouter()
 
@@ -286,7 +302,9 @@ async def websocket_endpoint(
 
     await manager.connect(websocket, roomid)
     await send_past_messages_to_user(websocket, roomid)
-    # await manager.brodcast(f"{userinfo.first_name} {userinfo.last_name} is online.", roomid)
+    await manager.brodcast(
+        f"{userinfo.first_name} {userinfo.last_name} is online.", roomid
+    )
 
     try:
         while True:
@@ -297,9 +315,10 @@ async def websocket_endpoint(
                 if data["type"] == "text":
                     stored_msg = store_and_return_message(userid, roomid, data["text"])
                     await manager.brodcast(
-                        json_text(stored_msg["sender"], stored_msg["message_id"],stored_msg["content"], stored_msg["sent_at"]),
-                        roomid
+                        f"Timestamp: {stored_msg['sent_at']}\n{stored_msg['user']}: {stored_msg['message']}",
+                        roomid,
                     )
+
                 elif data["type"] == "file":
                     header, base64_data = data["data"].split(",", 1)
                     file_data = base64.b64decode(base64_data)
@@ -320,8 +339,14 @@ async def websocket_endpoint(
                     )
 
                     await manager.brodcast(
-                        json_file(stored_msg["sender"], stored_msg["message_id"],file_url, stored_msg["content"], stored_msg["sent_at"]),
-                        roomid
+                        json_file(
+                            stored_msg["sender"],
+                            stored_msg["message_id"],
+                            file_url,
+                            stored_msg["content"],
+                            stored_msg["sent_at"],
+                        ),
+                        roomid,
                     )
             except json.JSONDecodeError:
                 await websocket.send_text("Invalid JSON format.")
@@ -350,9 +375,11 @@ async def send_past_messages_to_user(websocket: WebSocket, roomid: int):
             .all()
         )
 
-        for content,id,file_url, file_type, first_name, last_name, sent_at in results:
+        for content, id, file_url, file_type, first_name, last_name, sent_at in results:
             payload = (
-                json_file(f"{first_name} {last_name}",id,file_url, content or "",sent_at),
+                json_file(
+                    f"{first_name} {last_name}", id, file_url, content or "", sent_at
+                ),
             )
             # if file_url:
             #     if content:
@@ -388,11 +415,11 @@ def store_and_return_message(
         user = db.query(User).filter(User.id == userid).first()
 
         return {
-            "message_id" : new_message.id,
+            "message_id": new_message.id,
             "sender": f"{user.first_name}  {user.last_name}",
             "content": new_message.content or "",
             "file_url": new_message.file_url,
-            "sent_at" : new_message.sent_at
+            "sent_at": new_message.sent_at,
         }
     finally:
         db.close()

@@ -1,3 +1,5 @@
+import enum
+
 from sqlalchemy import (
     Boolean,
     Column,
@@ -9,15 +11,16 @@ from sqlalchemy import (
     func, Enum,
 )
 from sqlalchemy.orm import declarative_base, relationship
-import enum
 
 Base = declarative_base()
+
 
 class MessageStatus(str, enum.Enum):
     sent = "sent"
     delivered = "delivered"
     read = "read"
     
+
 class User(Base):
     __tablename__ = "users"
 
@@ -38,9 +41,13 @@ class User(Base):
     # Many-to-many: User is member of many chatrooms
     member_of = relationship("RoomMembers", back_populates="user")
     # One-to-many: User sends many messages
-    messages_sent = relationship("Message", back_populates="sender", foreign_keys="Message.sender_id")
+    messages_sent = relationship(
+        "Message", back_populates="sender", foreign_keys="Message.sender_id"
+    )
     # One-to-many: User receives direct messages
-    messages_received = relationship("Message", back_populates="receiver", foreign_keys="Message.receiver_id")
+    messages_received = relationship(
+        "Message", back_populates="receiver", foreign_keys="Message.receiver_id"
+    )
 
 
 class Chatroom(Base):
@@ -89,6 +96,10 @@ class Message(Base):
     file_type = Column(String, nullable=True)
 
     # Relationships
-    sender = relationship("User", back_populates="messages_sent", foreign_keys=[sender_id])
-    receiver = relationship("User", back_populates="messages_received", foreign_keys=[receiver_id])
+    sender = relationship(
+        "User", back_populates="messages_sent", foreign_keys=[sender_id]
+    )
+    receiver = relationship(
+        "User", back_populates="messages_received", foreign_keys=[receiver_id]
+    )
     room = relationship("Chatroom", back_populates="messages")
