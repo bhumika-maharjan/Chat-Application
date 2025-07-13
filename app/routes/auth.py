@@ -1,51 +1,77 @@
-from fastapi import APIRouter, Depends, HTTPException, Path
-from sqlalchemy.orm import Session
+import os
+import uuid
+from datetime import UTC, datetime, timedelta
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt
-from datetime import datetime, timedelta, timezone
-from typing import List
+from sqlalchemy.orm import Session
 
-from database.models import User
-from app.schemas import UserCreate, UserLogin, UserResponse
-from app.utils import hash_password, verify_password
-from app.config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
+from app.config import ACCESS_TOKEN_EXPIRE_MINUTES, ALGORITHM, SECRET_KEY
 from app.database import get_db
+from app.schemas import UserLogin, UserResponse
+from app.utils import hash_password, verify_password
+from database.models import User
+
+from .. import config
 
 router = APIRouter()
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
 
+
 @router.post("/register", response_model=UserResponse)
-def register(user: UserCreate, db: Session = Depends(get_db)):
-    existing_user = db.query(User).filter((User.username == user.username) | (User.email == user.email)).first()
+async def register(
+    username: str = Form(...),
+    first_name: str = Form(...),
+    middle_name: str = Form(None),
+    last_name: str = Form(...),
+    email: str = Form(...),
+    password: str = Form(...),
+    profile_image: UploadFile = File(None),
+    db: Session = Depends(get_db),
+):
+    existing_user = (
+        db.query(User)
+        .filter((User.username == username) | (User.email == email))
+        .first()
+    )
     if existing_user:
-        raise HTTPException(status_code=400, detail="Username or email already registered")
-    
-    hashed_pw = hash_password(user.password)
+        raise HTTPException(
+            status_code=400, detail="Username or email already registered"
+        )
+
+    profile_image_filename = None
+    if profile_image:
+        ext = profile_image.filename.split(".")[-1]
+        profile_image_filename = f"profile_{uuid.uuid4()}.{ext}"
+        file_path = os.path.join(config.UPLOAD_DIR, profile_image_filename)
+        with open(file_path, "wb") as f:
+            f.write(await profile_image.read())
+    hashed_pw = hash_password(password)
     db_user = User(
-        username=user.username,
-        first_name=user.first_name,
-        middle_name=user.middle_name,
-        last_name=user.last_name,
-        email=user.email,
-        password=hashed_pw    
+        username=username,
+        first_name=first_name,
+        middle_name=middle_name,
+        last_name=last_name,
+        email=email,
+        password=hashed_pw,
+        profile_image=profile_image_filename,
     )
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
     return db_user
 
+
 @router.post("/login")
 def login(user: UserLogin, db: Session = Depends(get_db)):
     db_user = db.query(User).filter(User.username == user.username).first()
     if not db_user or not verify_password(user.password, db_user.password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    
-    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    payload = {
-        "sub": str(db_user.id),
-        "exp": expire
-    }
+
+    expire = datetime.now(UTC) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    payload = {"sub": str(db_user.id), "exp": expire}
     access_token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
     return {"access token": f"bearer {access_token}"}
@@ -53,7 +79,7 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
     # return {"access_token": access_token, "token_type": "bearer"}
 
 
-@router.get("/users", response_model=List[UserResponse])
+@router.get("/users", response_model=list[UserResponse])
 def get_all_users(db: Session = Depends(get_db)):
     users = db.query(User).all()
     return users
