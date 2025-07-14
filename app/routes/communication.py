@@ -1,35 +1,45 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException, Header
-from fastapi.responses import HTMLResponse
-from app.database import get_db, SessionLocal
-from app.connection_manager import ConnectionManager
-from database.models import RoomMembers, Message, User, Chatroom
-from app.utils import get_current_user, check_user_inroom, verify_token, verify_password
-from sqlalchemy.orm import Session
-import json
 import base64
-import uuid
+import json
 import os
+import uuid
+
+from fastapi import (
+    APIRouter,
+    Depends,
+    Header,
+    HTTPException,
+    WebSocket,
+    WebSocketDisconnect,
+)
+from fastapi.responses import HTMLResponse
+from sqlalchemy.orm import Session
+
+from app.connection_manager import ConnectionManager
+from app.database import SessionLocal, get_db
+from app.utils import check_user_inroom, get_current_user, verify_password, verify_token
+from database.models import Chatroom, Message, RoomMembers, User
 
 router = APIRouter()
+
 
 @router.get("/chatroom/{roomid}")
 def get_chatroom_info(
     roomid: int,
-    token: str = Header(...), 
+    token: str = Header(...),
 ):
     db = SessionLocal()
     print("checking")
-    user = verify_token(token, db)  
+    user = verify_token(token, db)
     room = db.query(Chatroom).filter(Chatroom.id == roomid).first()
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
 
     creator = db.query(User).filter(User.id == room.created_by).first()
     return {
-        "user" : f"{user.first_name} {user.last_name}",
+        "user": f"{user.first_name} {user.last_name}",
         "roomname": room.roomname,
         "creator": f"{creator.first_name} {creator.last_name}",
-        "created_at": room.created_at.isoformat()
+        "created_at": room.created_at.isoformat(),
     }
 
 
@@ -61,7 +71,7 @@ html = """
         var ws = null;
 
         function CreateConnection(event){
-            event.preventDefault(); 
+            event.preventDefault();
 
             if (ws !== null && ws.readyState === WebSocket.OPEN) {
                 alert("Already connected!");
@@ -95,7 +105,7 @@ html = """
                 alert("Failed to fetch chatroom details.");
             });
 
-        
+
             ws = new WebSocket(`ws://localhost:8000/chat/${roomid}?token=${token}&password=${encodeURIComponent(password)}`);
 
             ws.onmessage = (event) => {
@@ -166,7 +176,7 @@ html = """
         }
 
         function SendMsg(event){
-            event.preventDefault(); 
+            event.preventDefault();
             const msg = document.getElementById("message").value;
             const fileInput =  document.getElementById("fileInput");
             const file = fileInput.files[0];
@@ -208,11 +218,15 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 def display_home():
     return HTMLResponse(html)
 
+
 manager = ConnectionManager()
 
+
 @router.websocket("/chat/{roomid}")
-async def websocket_endpoint(websocket: WebSocket, roomid : str, db: Session = Depends(get_db)):
-    token =  websocket.query_params.get("token")
+async def websocket_endpoint(
+    websocket: WebSocket, roomid: str, db: Session = Depends(get_db)
+):
+    token = websocket.query_params.get("token")
     password = websocket.query_params.get("password", "")
     userinfo = verify_token(token, db)
     userid = int(userinfo.id)
@@ -247,35 +261,34 @@ async def websocket_endpoint(websocket: WebSocket, roomid : str, db: Session = D
                     stored_msg = store_and_return_message(userid, roomid, data["text"])
                     await manager.brodcast(
                         f"Timestamp: {stored_msg['sent_at']}\n{stored_msg['user']}: {stored_msg['message']}",
-                        roomid
+                        roomid,
                     )
                 elif data["type"] == "file":
-                    header, base64_data =  data["data"].split(",",1)
-                    file_data =  base64.b64decode(base64_data)
+                    header, base64_data = data["data"].split(",", 1)
+                    file_data = base64.b64decode(base64_data)
                     filename = f"{uuid.uuid4()}_{data['filename'].replace(' ', '_')}"
-                    filepath = os.path.join(UPLOAD_DIR,filename)
+                    filepath = os.path.join(UPLOAD_DIR, filename)
 
                     with open(filepath, "wb") as f:
                         f.write(file_data)
 
                     file_url = f"/{UPLOAD_DIR}/{filename}"
 
-                    stored_msg =  store_and_return_message(
+                    stored_msg = store_and_return_message(
                         userid,
                         roomid,
-                        content = data.get("text"),
-                        file_url = file_url,
-                        file_type = data["mimetype"]
+                        content=data.get("text"),
+                        file_url=file_url,
+                        file_type=data["mimetype"],
                     )
 
                     await manager.brodcast(
                         f"Timestamp: {stored_msg['sent_at']}\n{stored_msg['user']} sent a file: {file_url}",
-                        roomid
+                        roomid,
                     )
             except json.JSONDecodeError:
                 await websocket.send_text("Invalid JSON format.")
                 continue  # Don't exit the loop
-
 
     except WebSocketDisconnect:
         manager.disconnect(websocket, roomid)
@@ -292,14 +305,15 @@ async def send_past_messages_to_user(websocket: WebSocket, roomid: int):
                 Message.file_type,
                 User.first_name,
                 User.last_name,
-                Message.sent_at)
+                Message.sent_at,
+            )
             .join(User, Message.sender_id == User.id)
             .filter(Message.room_id == roomid)
             .order_by(Message.sent_at)
             .all()
         )
 
-        for content,file_url, file_type, first_name, last_name, time in results:
+        for content, file_url, file_type, first_name, last_name, time in results:
             if file_url:
                 if content:
                     message_text = f"Timestamp: {time}\n{first_name} {last_name} sent a file: {content} {file_url}"
@@ -311,16 +325,19 @@ async def send_past_messages_to_user(websocket: WebSocket, roomid: int):
     finally:
         db.close()
 
-def store_and_return_message(userid: int, room_id: int, content: str, file_url :str = None, file_type: str = None) -> dict:
+
+def store_and_return_message(
+    userid: int, room_id: int, content: str, file_url: str = None, file_type: str = None
+) -> dict:
     db = SessionLocal()
     try:
         print("working")
         new_message = Message(
-            content= content,
-            sender_id= userid,
-            room_id= room_id,
-            file_url =  file_url,
-            file_type = file_type
+            content=content,
+            sender_id=userid,
+            room_id=room_id,
+            file_url=file_url,
+            file_type=file_type,
         )
         db.add(new_message)
         db.commit()
@@ -334,24 +351,27 @@ def store_and_return_message(userid: int, room_id: int, content: str, file_url :
             "message": new_message.content or "",
             "file_url": new_message.file_url,
             "file_type": new_message.file_type,
-            "sent_at" : new_message.sent_at
+            "sent_at": new_message.sent_at,
         }
     finally:
         db.close()
 
-@router.get('/leftchat/{roomid}')
-async def left_chat( roomid: int, db: Session = Depends(get_db), user : User = Depends(get_current_user)):
-    userid =  user.id
-    userinfo = db.query(User.first_name, User.last_name).filter_by(id= userid).first()
+
+@router.get("/leftchat/{roomid}")
+async def left_chat(
+    roomid: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+):
+    userid = user.id
+    userinfo = db.query(User.first_name, User.last_name).filter_by(id=userid).first()
 
     if not userinfo:
         return {"error": "User not found"}
 
-    membership = check_user_inroom( userid, roomid, db)
+    membership = check_user_inroom(userid, roomid, db)
     if membership:
         full_name = f"{userinfo.first_name} {userinfo.last_name}"
         msg_text = f"{full_name} has left the chat."
-        stored_msg = store_and_return_message( userid , roomid, msg_text)
+        stored_msg = store_and_return_message(userid, roomid, msg_text)
 
         db.query(RoomMembers).filter_by(user_id=userid, room_id=roomid).delete()
         db.commit()
