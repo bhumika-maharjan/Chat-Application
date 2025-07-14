@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.security import OAuth2PasswordBearer
+from app.routes import communication,chats,auth, home, profile, user_to_user
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -34,4 +35,5 @@ app.mount(
     name="profile_images",
 )
 
+app.include_router(home.router)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
