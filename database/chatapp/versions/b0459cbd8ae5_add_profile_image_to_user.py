@@ -1,7 +1,7 @@
 """add profile_image to User
 
 Revision ID: b0459cbd8ae5
-Revises: e2aca283172e
+Revises: 5c7cb168606c
 Create Date: 2025-07-13 18:34:36.269037
 
 """
@@ -13,7 +13,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "b0459cbd8ae5"
-down_revision: str | Sequence[str] | None = "e2aca283172e"
+down_revision: str | Sequence[str] | None = "5c7cb168606c"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
