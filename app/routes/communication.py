@@ -15,9 +15,45 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.connection_manager import ConnectionManager
-from app.database import SessionLocal, get_db
-from app.utils import check_user_inroom, get_current_user, verify_password, verify_token
-from database.models import Chatroom, Message, RoomMembers, User
+from database.models import RoomMembers, Message, User, Chatroom
+from app.utils import get_current_user, check_user_inroom, verify_token, verify_password
+from sqlalchemy.orm import Session
+import json
+import base64
+import uuid
+import os
+from datetime import datetime
+
+def json_text(
+        sender: str,
+        message_id : int,
+        text: str,
+        ts: datetime | None = None
+    ) -> dict:
+    return {
+        "type": "text",
+        "message_id" : message_id,
+        "timestamp": ts.strftime("%Y-%m-%d %H:%M:%S"),
+        "sender": sender,
+        "text": text,
+    }
+
+
+def json_file(
+    sender: str,
+    message_id : int,
+    url: str,
+    caption: str = "",
+    ts: datetime | None = None,
+) -> dict:
+    return {
+        "type": "file",
+        "message_id" : message_id,
+        "timestamp": ts.strftime("%Y-%m-%d %H:%M:%S"),
+        "sender": sender,
+        "file_url": url,
+        "text": caption,
+    }
 
 router = APIRouter()
 
@@ -260,8 +296,8 @@ async def websocket_endpoint(
                 if data["type"] == "text":
                     stored_msg = store_and_return_message(userid, roomid, data["text"])
                     await manager.brodcast(
-                        f"Timestamp: {stored_msg['sent_at']}\n{stored_msg['user']}: {stored_msg['message']}",
-                        roomid,
+                        json_text(stored_msg["sender"], stored_msg["message_id"],stored_msg["content"], stored_msg["sent_at"]),
+                        roomid
                     )
                 elif data["type"] == "file":
                     header, base64_data = data["data"].split(",", 1)
@@ -283,13 +319,12 @@ async def websocket_endpoint(
                     )
 
                     await manager.brodcast(
-                        f"Timestamp: {stored_msg['sent_at']}\n{stored_msg['user']} sent a file: {file_url}",
-                        roomid,
+                        json_file(stored_msg["sender"], stored_msg["message_id"],file_url, stored_msg["content"], stored_msg["sent_at"]),
+                        roomid
                     )
             except json.JSONDecodeError:
                 await websocket.send_text("Invalid JSON format.")
                 continue  # Don't exit the loop
-
     except WebSocketDisconnect:
         manager.disconnect(websocket, roomid)
         # await manager.brodcast(f"{userinfo.first_name} {userinfo.last_name} is offline", roomid)
@@ -301,6 +336,7 @@ async def send_past_messages_to_user(websocket: WebSocket, roomid: int):
         results = (
             db.query(
                 Message.content,
+                Message.id,
                 Message.file_url,
                 Message.file_type,
                 User.first_name,
@@ -313,15 +349,19 @@ async def send_past_messages_to_user(websocket: WebSocket, roomid: int):
             .all()
         )
 
-        for content, file_url, file_type, first_name, last_name, time in results:
-            if file_url:
-                if content:
-                    message_text = f"Timestamp: {time}\n{first_name} {last_name} sent a file: {content} {file_url}"
-                else:
-                    message_text = f"Timestamp: {time}\n{first_name} {last_name} sent a file: {file_url}"
-            else:
-                message_text = f"Timestamp: {time}\n{first_name} {last_name}: {content}"
-            await websocket.send_text(message_text)
+        for content,id,file_url, file_type, first_name, last_name, sent_at in results:
+            payload = (
+                json_file(f"{first_name} {last_name}",id,file_url, content or "",sent_at),
+            )
+            # if file_url:
+            #     if content:
+            #         message_text = f"Timestamp: {time}\n{first_name} {last_name} sent a file: {content} {file_url}"
+            #     else:
+            #         message_text = f"Timestamp: {time}\n{first_name} {last_name} sent a file: {file_url}"
+            # else:
+            #     message_text = f"Timestamp: {time}\n{first_name} {last_name}: {content}"
+            print(payload)
+            await websocket.send_text(json.dumps(payload))
     finally:
         db.close()
 
@@ -347,11 +387,11 @@ def store_and_return_message(
         user = db.query(User).filter(User.id == userid).first()
 
         return {
-            "user": user.first_name + user.last_name,
-            "message": new_message.content or "",
+            "message_id" : new_message.id,
+            "sender": f"{user.first_name}  {user.last_name}",
+            "content": new_message.content or "",
             "file_url": new_message.file_url,
-            "file_type": new_message.file_type,
-            "sent_at": new_message.sent_at,
+            "sent_at" : new_message.sent_at
         }
     finally:
         db.close()
@@ -370,13 +410,11 @@ async def left_chat(
     membership = check_user_inroom(userid, roomid, db)
     if membership:
         full_name = f"{userinfo.first_name} {userinfo.last_name}"
-        msg_text = f"{full_name} has left the chat."
-        stored_msg = store_and_return_message(userid, roomid, msg_text)
 
         db.query(RoomMembers).filter_by(user_id=userid, room_id=roomid).delete()
         db.commit()
 
-        await manager.brodcast(f"{stored_msg['message']}", roomid)
+        await manager.brodcast(json_text(full_name, "has left the chat"), roomid)
 
         return {"message": "Leave message stored and broadcasted"}
     else:
