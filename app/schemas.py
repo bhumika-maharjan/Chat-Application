@@ -3,14 +3,13 @@ from typing import Annotated
 
 from pydantic import BaseModel, EmailStr, StringConstraints
 
-
-class UserCreate(BaseModel):
-    username: str
-    first_name: str
-    middle_name: str | None = None
-    last_name: str
-    email: EmailStr
-    password: str
+# class UserCreate(BaseModel):
+#     username: str
+#     first_name: str
+#     middle_name: str | None = None
+#     last_name: str
+#     email: EmailStr
+#     password: str
 
 
 class UserLogin(BaseModel):
@@ -41,11 +40,11 @@ class UserOut(BaseModel):
         orm_mode = True
 
 
-class UserUpdate(BaseModel):
-    first_name: str | None = None
-    middle_name: str | None = None
-    last_name: str | None = None
-    email: EmailStr | None = None
+# class UserUpdate(BaseModel):
+#     first_name: str | None = None
+#     middle_name: str | None = None
+#     last_name: str | None = None
+#     email: EmailStr | None = None
 
 
 class ChangePassword(BaseModel):
