@@ -1,26 +1,32 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException, Header
-from fastapi.responses import HTMLResponse
-from typing import Dict, Tuple
-from app.database import get_db, SessionLocal
-from app.connection_manager import ConnectionManager
-from database.models import RoomMembers, Message, User, Chatroom, PrivateMessage
-from app.utils import get_current_user, check_user_inroom, verify_token, verify_password, decode_token
-from sqlalchemy.orm import Session
-import json
 import base64
-import uuid
+import json
 import os
+import uuid
 from datetime import datetime
 
+from fastapi import (
+    APIRouter,
+    Depends,
+    Header,
+    HTTPException,
+    WebSocket,
+    WebSocketDisconnect,
+)
+from fastapi.responses import HTMLResponse
+from sqlalchemy.orm import Session
+
+from app.connection_manager import ConnectionManager
+from app.database import SessionLocal, get_db
+from app.utils import check_user_inroom, get_current_user, verify_password, verify_token
+from database.models import Chatroom, Message, RoomMembers, User
+
+
 def json_text(
-        sender: str,
-        message_id : int,
-        text: str,
-        ts: datetime | None = None
-    ) -> dict:
+    sender: str, message_id: int, text: str, ts: datetime | None = None
+) -> dict:
     return {
         "type": "text",
-        "message_id" : message_id,
+        "message_id": message_id,
         "timestamp": ts.strftime("%Y-%m-%d %H:%M:%S"),
         "sender": sender,
         "text": text,
@@ -29,40 +35,42 @@ def json_text(
 
 def json_file(
     sender: str,
-    message_id : int,
+    message_id: int,
     url: str,
     caption: str = "",
     ts: datetime | None = None,
 ) -> dict:
     return {
         "type": "file",
-        "message_id" : message_id,
+        "message_id": message_id,
         "timestamp": ts.strftime("%Y-%m-%d %H:%M:%S"),
         "sender": sender,
         "file_url": url,
         "text": caption,
     }
 
+
 router = APIRouter()
+
 
 @router.get("/chatroom/{roomid}")
 def get_chatroom_info(
     roomid: int,
-    token: str = Header(...), 
+    token: str = Header(...),
 ):
     db = SessionLocal()
     print("checking")
-    user = verify_token(token, db)  
+    user = verify_token(token, db)
     room = db.query(Chatroom).filter(Chatroom.id == roomid).first()
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
 
     creator = db.query(User).filter(User.id == room.created_by).first()
     return {
-        "user" : f"{user.first_name} {user.last_name}",
+        "user": f"{user.first_name} {user.last_name}",
         "roomname": room.roomname,
-        "creator": f"{creator.first_name} {creator.last_name}", # type: ignore
-        "created_at": room.created_at.isoformat()
+        "creator": f"{creator.first_name} {creator.last_name}",
+        "created_at": room.created_at.isoformat(),
     }
 
 
@@ -94,7 +102,7 @@ html = """
         var ws = null;
 
         function CreateConnection(event){
-            event.preventDefault(); 
+            event.preventDefault();
 
             if (ws !== null && ws.readyState === WebSocket.OPEN) {
                 alert("Already connected!");
@@ -128,7 +136,7 @@ html = """
                 alert("Failed to fetch chatroom details.");
             });
 
-        
+
             ws = new WebSocket(`ws://localhost:8000/chat/${roomid}?token=${token}&password=${encodeURIComponent(password)}`);
 
             ws.onmessage = (event) => {
@@ -199,7 +207,7 @@ html = """
         }
 
         function SendMsg(event){
-            event.preventDefault(); 
+            event.preventDefault();
             const msg = document.getElementById("message").value;
             const fileInput =  document.getElementById("fileInput");
             const file = fileInput.files[0];
@@ -241,34 +249,40 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 def display_home():
     return HTMLResponse(html)
 
+
 manager = ConnectionManager()
 
+
 @router.websocket("/chat/{roomid}")
-async def websocket_endpoint(websocket: WebSocket, roomid : str, db: Session = Depends(get_db)):
-    token =  websocket.query_params.get("token")
+async def websocket_endpoint(
+    websocket: WebSocket, roomid: str, db: Session = Depends(get_db)
+):
+    token = websocket.query_params.get("token")
     password = websocket.query_params.get("password", "")
-    userinfo = decode_token(token, db) # type: ignore
-    userid = int(userinfo.id) # type: ignore
-    roomid = int(roomid) # type: ignore
+    userinfo = verify_token(token, db)
+    userid = int(userinfo.id)
+    roomid = int(roomid)
 
     room = db.query(Chatroom).filter(Chatroom.id == roomid).first()
     if not room:
         await websocket.close(code=1008)
         return
 
-    is_member = check_user_inroom(userid, roomid, db) # type: ignore
+    is_member = check_user_inroom(userid, roomid, db)
     if not is_member:
         await websocket.close(code=1008)
         return
 
-    if bool(room.is_private):
-        if not password or not verify_password(password, room.password): # type: ignore
+    if room.is_private:
+        if not password or not verify_password(password, room.password):
             await websocket.close(code=1008)
             return
 
     await manager.connect(websocket, roomid)
     await send_past_messages_to_user(websocket, roomid)
-    # await manager.brodcast(f"{userinfo.first_name} {userinfo.last_name} is online.", roomid)
+    await manager.brodcast(
+        f"{userinfo.first_name} {userinfo.last_name} is online.", roomid
+    )
 
     try:
         while True:
@@ -277,33 +291,40 @@ async def websocket_endpoint(websocket: WebSocket, roomid : str, db: Session = D
                 data = json.loads(raw_data)
 
                 if data["type"] == "text":
-                    stored_msg = store_and_return_message(userid, roomid, data["text"]) # type: ignore
+                    stored_msg = store_and_return_message(userid, roomid, data["text"])
                     await manager.brodcast(
-                        json_text(stored_msg["sender"], stored_msg["message_id"],stored_msg["content"], stored_msg["sent_at"]),
-                        roomid
+                        f"Timestamp: {stored_msg['sent_at']}\n{stored_msg['user']}: {stored_msg['message']}",
+                        roomid,
                     )
+
                 elif data["type"] == "file":
-                    header, base64_data =  data["data"].split(",",1)
-                    file_data =  base64.b64decode(base64_data)
+                    header, base64_data = data["data"].split(",", 1)
+                    file_data = base64.b64decode(base64_data)
                     filename = f"{uuid.uuid4()}_{data['filename'].replace(' ', '_')}"
-                    filepath = os.path.join(UPLOAD_DIR,filename)
+                    filepath = os.path.join(UPLOAD_DIR, filename)
 
                     with open(filepath, "wb") as f:
                         f.write(file_data)
 
                     file_url = f"/{UPLOAD_DIR}/{filename}"
 
-                    stored_msg =  store_and_return_message(
+                    stored_msg = store_and_return_message(
                         userid,
-                        roomid, # type: ignore
-                        content = data.get("text"),
-                        file_url = file_url,
-                        file_type = data["mimetype"]
+                        roomid,
+                        content=data.get("text"),
+                        file_url=file_url,
+                        file_type=data["mimetype"],
                     )
 
                     await manager.brodcast(
-                        json_file(stored_msg["sender"], stored_msg["message_id"],file_url, stored_msg["content"], stored_msg["sent_at"]),
-                        roomid
+                        json_file(
+                            stored_msg["sender"],
+                            stored_msg["message_id"],
+                            file_url,
+                            stored_msg["content"],
+                            stored_msg["sent_at"],
+                        ),
+                        roomid,
                     )
             except json.JSONDecodeError:
                 await websocket.send_text("Invalid JSON format.")
@@ -324,16 +345,19 @@ async def send_past_messages_to_user(websocket: WebSocket, roomid: int):
                 Message.file_type,
                 User.first_name,
                 User.last_name,
-                Message.sent_at)
+                Message.sent_at,
+            )
             .join(User, Message.sender_id == User.id)
             .filter(Message.room_id == roomid)
             .order_by(Message.sent_at)
             .all()
         )
 
-        for content,id,file_url, file_type, first_name, last_name, sent_at in results:
+        for content, id, file_url, file_type, first_name, last_name, sent_at in results:
             payload = (
-                json_file(f"{first_name} {last_name}",id,file_url, content or "",sent_at),
+                json_file(
+                    f"{first_name} {last_name}", id, file_url, content or "", sent_at
+                ),
             )
             # if file_url:
             #     if content:
@@ -347,16 +371,19 @@ async def send_past_messages_to_user(websocket: WebSocket, roomid: int):
     finally:
         db.close()
 
-def store_and_return_message(userid: int, room_id: int, content: str, file_url :str = None, file_type: str = None) -> dict:
+
+def store_and_return_message(
+    userid: int, room_id: int, content: str, file_url: str = None, file_type: str = None
+) -> dict:
     db = SessionLocal()
     try:
         print("working")
         new_message = Message(
-            content= content,
-            sender_id= userid,
-            room_id= room_id,
-            file_url =  file_url,
-            file_type = file_type
+            content=content,
+            sender_id=userid,
+            room_id=room_id,
+            file_url=file_url,
+            file_type=file_type,
         )
         db.add(new_message)
         db.commit()
@@ -366,24 +393,27 @@ def store_and_return_message(userid: int, room_id: int, content: str, file_url :
         user = db.query(User).filter(User.id == userid).first()
 
         return {
-            "message_id" : new_message.id,
+            "message_id": new_message.id,
             "sender": f"{user.first_name}  {user.last_name}",
             "content": new_message.content or "",
             "file_url": new_message.file_url,
-            "sent_at" : new_message.sent_at
+            "sent_at": new_message.sent_at,
         }
     finally:
         db.close()
 
-@router.get('/leftchat/{roomid}')
-async def left_chat( roomid: int, db: Session = Depends(get_db), user : User = Depends(get_current_user)):
-    userid =  user.id
-    userinfo = db.query(User.first_name, User.last_name).filter_by(id= userid).first()
+
+@router.get("/leftchat/{roomid}")
+async def left_chat(
+    roomid: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+):
+    userid = user.id
+    userinfo = db.query(User.first_name, User.last_name).filter_by(id=userid).first()
 
     if not userinfo:
         return {"error": "User not found"}
 
-    membership = check_user_inroom( userid, roomid, db) #type: ignore
+    membership = check_user_inroom(userid, roomid, db)
     if membership:
         full_name = f"{userinfo.first_name} {userinfo.last_name}"
 
@@ -395,153 +425,3 @@ async def left_chat( roomid: int, db: Session = Depends(get_db), user : User = D
         return {"message": "Leave message stored and broadcasted"}
     else:
         return {"message": "No user in this room"}
-    
-private_chat_html = """
-<!DOCTYPE html>
-<html>
-<head><title>Private Chat</title></head>
-<body>
-    <h2>Private Chat Test</h2>
-    <label>Your Token:</label><br>
-    <input type="text" id="token" style="width: 400px"/><br><br>
-
-    <label>Receiver User ID:</label><br>
-    <input type="text" id="receiver_id"/><br><br>
-
-    <button onclick="connectChat()">Connect</button>
-    <hr>
-
-    <input type="text" id="message" placeholder="Type your message"/>
-    <button onclick="sendMessage()">Send</button>
-
-    <ul id="chatbox"></ul>
-
-<script>
-    let socket = null;
-
-    function connectChat() {
-        const receiverId = document.getElementById("receiver_id").value;
-        const token = document.getElementById("token").value;
-
-        socket = new WebSocket(`ws://localhost:8000/privatechat/${receiverId}?token=${token}`);
-
-        socket.onopen = () => {
-            console.log("Connected to private chat.");
-        };
-
-        socket.onmessage = (event) => {
-            const msg = document.createElement("li");
-            msg.textContent = event.data;
-            document.getElementById("chatbox").appendChild(msg);
-        };
-
-        socket.onclose = () => {
-            alert("Connection closed.");
-        };
-    }
-
-    function sendMessage() {
-        const msg = document.getElementById("message").value;
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            socket.send(msg);
-            document.getElementById("message").value = "";
-        } else {
-            alert("Socket is not connected.");
-        }
-    }
-</script>
-</body>
-</html>
-"""
-
-
-@router.get("/private")
-def private_chat_page():
-    return HTMLResponse(private_chat_html)
-
-
-# Store active WebSocket connections per user
-private_connections: Dict[int, WebSocket] = {}
-
-async def send_private_message_history(websocket: WebSocket, user1_id: int, user2_id: int):
-    db = SessionLocal()
-    try:
-        # Query messages where (sender=user1 and receiver=user2) OR (sender=user2 and receiver=user1)
-        messages = (
-            db.query(PrivateMessage)
-            .filter(
-                ((PrivateMessage.sender_id == user1_id) & (PrivateMessage.receiver_id == user2_id)) |
-                ((PrivateMessage.sender_id == user2_id) & (PrivateMessage.receiver_id == user1_id))
-            )
-            .order_by(PrivateMessage.sent_at)
-            .all()
-        )
-        
-        for msg in messages:
-            sender = db.query(User).filter(User.id == msg.sender_id).first()
-            text = f"Timestamp: {msg.sent_at}\n{sender.first_name} {sender.last_name}: {msg.content}"
-            await websocket.send_text(text)
-    finally:
-        db.close()
-
-
-@router.websocket("/privatechat/{receiver_id}")
-async def private_chat(websocket: WebSocket, receiver_id: int, db: Session = Depends(get_db)):
-    token = websocket.query_params.get("token")
-    if not token:
-        print("Missing token")
-        await websocket.close(code=1008)
-        return
-
-    try:
-        user = decode_token(token, db)
-    except ValueError as e:
-        print("TOKEN ERROR:", str(e))
-        await websocket.close(code=1008)
-        return
-
-    await websocket.accept()  # Only after token is valid
-
-    sender_id = user.id
-
-    await send_private_message_history(websocket, sender_id, receiver_id) 
-    private_connections[sender_id] = websocket
-
-    try:
-        while True:
-            data = await websocket.receive_text()
-            msg = store_private_message(sender_id, receiver_id, data)
-            response_text = f"Timestamp: {msg['sent_at']}\n{msg['sender']}: {msg['message']}"
-
-            receiver_ws = private_connections.get(receiver_id)
-            if receiver_ws:
-                await receiver_ws.send_text(response_text)
-
-            await websocket.send_text(response_text)
-
-    except WebSocketDisconnect:
-        del private_connections[sender_id]
-
-
-def store_private_message(sender_id: int, receiver_id: int,  content: str, file_url: str = None, file_type: str = None):
-    db = SessionLocal()
-    try:
-        message = PrivateMessage(
-            sender_id=sender_id,
-            receiver_id= receiver_id,
-            content=content,
-            file_url=file_url,
-            file_type=file_type
-        )
-        db.add(message)
-        db.commit()
-        db.refresh(message)
-
-        sender = db.query(User).filter_by(id=sender_id).first()
-        return {
-            "sender": f"{sender.first_name} {sender.last_name}",
-            "message": message.content,
-            "sent_at": message.sent_at
-        }
-    finally:
-        db.close()

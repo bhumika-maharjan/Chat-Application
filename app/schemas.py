@@ -1,18 +1,21 @@
-from pydantic import BaseModel, EmailStr, StringConstraints
-from typing import Optional, Annotated
 from datetime import datetime
+from typing import Annotated
 
-class UserCreate(BaseModel):
-    username: str
-    first_name: str
-    middle_name: Optional[str] = None
-    last_name: str
-    email: EmailStr
-    password: str
+from pydantic import BaseModel, EmailStr, StringConstraints
+
+# class UserCreate(BaseModel):
+#     username: str
+#     first_name: str
+#     middle_name: str | None = None
+#     last_name: str
+#     email: EmailStr
+#     password: str
+
 
 class UserLogin(BaseModel):
     username: str
     password: str
+
 
 class UserResponse(BaseModel):
     id: int
@@ -22,40 +25,47 @@ class UserResponse(BaseModel):
     class Config:
         orm_mode = True
 
+
 class UserOut(BaseModel):
     id: int
     username: str
     first_name: str
-    middle_name: Optional[str]
+    middle_name: str | None
     last_name: str
     email: EmailStr
     created_at: datetime
+    profile_image: str | None
 
     class Config:
         orm_mode = True
 
-class UserUpdate(BaseModel):
-    first_name: Optional[str] = None
-    middle_name: Optional[str] = None
-    last_name: Optional[str] = None
-    email: Optional[EmailStr] = None
+
+# class UserUpdate(BaseModel):
+#     first_name: str | None = None
+#     middle_name: str | None = None
+#     last_name: str | None = None
+#     email: EmailStr | None = None
+
 
 class ChangePassword(BaseModel):
-   old_password: Annotated[str, StringConstraints(min_length=6)]
-   new_password: Annotated[str, StringConstraints(min_length=6)]
+    old_password: Annotated[str, StringConstraints(min_length=6)]
+    new_password: Annotated[str, StringConstraints(min_length=6)]
+
 
 class CreateTable(BaseModel):
     room_name: str
-    password: Optional[str] = None
+    password: str | None = None
+
 
 class JoinRoom(BaseModel):
     room_id: int
-    password: Optional[str] = None
+    password: str | None = None
+
 
 class LastMessageResponse(BaseModel):
     roomname: str
     content: str
-    timestamp: str 
+    timestamp: str
 
     class Config:
         orm_mode = True

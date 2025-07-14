@@ -1,11 +1,11 @@
 from fastapi import FastAPI
-from fastapi.security import OAuth2PasswordBearer
-from app.routes import communication,chats,auth, home, profile, user_to_user
-from fastapi.staticfiles import StaticFiles
-from app.database import engine
-from database.models import Base
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
+from app.config import UPLOAD_DIR
+from app.database import engine
+from app.routes import auth, chats, communication, profile, search
+from database.models import Base
 
 Base.metadata.create_all(bind=engine)
 
@@ -19,13 +19,19 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,  # Allows these origins
     allow_credentials=True,
-    allow_methods=["*"],    # Allows all HTTP methods (GET, POST, etc.)
-    allow_headers=["*"],    # Allows all headers
+    allow_methods=["*"],  # Allows all HTTP methods (GET, POST, etc.)
+    allow_headers=["*"],  # Allows all headers
 )
 app.include_router(chats.router)
 app.include_router(communication.router)
 app.include_router(auth.router)
 app.include_router(profile.router)
-app.include_router(user_to_user.router)
-app.include_router(home.router)
+app.include_router(search.router)
+
+app.mount(
+    "/profile_images",
+    StaticFiles(directory=UPLOAD_DIR),  # app/uploads/profile_pics/
+    name="profile_images",
+)
+
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
