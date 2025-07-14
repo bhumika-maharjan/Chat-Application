@@ -2,8 +2,7 @@ from datetime import datetime
 from typing import Annotated
 
 from pydantic import BaseModel, EmailStr, StringConstraints
-from typing import Optional, Annotated
-from datetime import datetime
+
 
 class UserCreate(BaseModel):
     username: str
@@ -61,12 +60,13 @@ class CreateTable(BaseModel):
 
 class JoinRoom(BaseModel):
     room_id: int
-    password: Optional[str] = None
+    password: str | None = None
+
 
 class LastMessageResponse(BaseModel):
     roomname: str
     content: str
-    timestamp: str 
+    timestamp: str
 
     class Config:
         orm_mode = True
