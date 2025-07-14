@@ -1,4 +1,4 @@
-from fastapi import WebSocket, APIRouter, Depends, WebSocketDisconnect
+from fastapi import WebSocket, APIRouter, Depends, WebSocketDisconnect, Header
 from app.database import get_db, SessionLocal
 from sqlalchemy.orm import Session
 from app.utils import verify_token, verify_user
@@ -6,13 +6,13 @@ from app.connection_manager import UserConnectionManager
 from fastapi.responses import HTMLResponse
 from database.models import Message, User
 from sqlalchemy import or_, and_
-from datetime import datetime
 import base64
 import uuid
 import json
 import os
+from contextlib import contextmanager
 
-router =  APIRouter()
+router = APIRouter()
 
 html = """
 <!DOCTYPE html>
@@ -112,7 +112,6 @@ html = """
         </script>
     </body>
 </html>
-
 """
 
 UPLOAD_DIR = "uploads"
@@ -120,14 +119,44 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 usermanager = UserConnectionManager()
 
+@contextmanager
+def get_db_session():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+def build_message_dict(msg, sender_name, include_file_url_key=True, msg_type="message_history"):
+    base = {
+        "type": msg_type,
+        "message_id": msg.id,
+        "timestamp": msg.sent_at.strftime("%Y-%m-%d %H:%M:%S"),
+        "sender": sender_name,
+        "content": msg.content if msg.content else None,
+        "status": msg.status
+    }
+    # Use consistent "file_url" key in message dict
+    if include_file_url_key:
+        base["file_url"] = msg.file_url if msg.file_url else None
+    else:
+        base["file_url"] = msg.file_url if msg.file_url else None
+    return base
+
+async def send_message(websocket: WebSocket, msg_dict: dict):
+    await websocket.send_text(json.dumps(msg_dict))
+
 @router.get("/")
 def display():
     return HTMLResponse(html)
 
 @router.websocket("/userchat/{receiverid}")
-async def user_websocket_endpoint(websocket: WebSocket, receiverid : str, db: Session = Depends(get_db)):
-    token =  websocket.query_params.get("token")
-    userinfo =  verify_token(token, db)
+async def user_websocket_endpoint(websocket: WebSocket, receiverid: str, db: Session = Depends(get_db)):
+    token = websocket.query_params.get("token")
+    userinfo = verify_token(token, db)
+    if not userinfo:
+        await websocket.close(code=1008)
+        return
 
     sender_id = int(userinfo.id)
     receiver_id = int(receiverid)
@@ -138,44 +167,36 @@ async def user_websocket_endpoint(websocket: WebSocket, receiverid : str, db: Se
         return
     
     await usermanager.connect(sender_id, receiver_id, websocket)
-    await send_past_message(websocket , sender_id, receiver_id)
+    await send_past_message(websocket, sender_id, receiver_id)
 
     try:
         while True:
-            raw_data =  await websocket.receive_text()
+            raw_data = await websocket.receive_text()
             try:
                 data = json.loads(raw_data)
 
                 if data["type"] == "text":
-                    stored_msg =  store_and_return_msg(data["text"], sender_id, receiver_id)
+                    stored_msg = store_and_return_msg(data["text"], sender_id, receiver_id)
                     # Notify both parties
                     await usermanager.send_msg(sender_id, receiver_id, {
+                        **stored_msg,
                         "type": "status_update",
-                        "message_id": stored_msg["id"],
-                        "timestamp": stored_msg["timestamp"],
-                        "sender": stored_msg["sender"],
-                        "content": stored_msg["content"],
-                        "file_url": stored_msg["file_url"],
                         "status": "sent"
                     })
 
-                    update_status("delivered",stored_msg["id"])
+                    update_status("delivered", stored_msg["message_id"])
 
                     await websocket.send_text(json.dumps({
+                        **stored_msg,
                         "type": "status_update",
-                        "message_id": stored_msg["id"],
-                        "timestamp": stored_msg["timestamp"],
-                        "sender": stored_msg["sender"],
-                        "content": stored_msg["content"],
-                        "file_url": stored_msg["file_url"],
                         "status": "delivered"
                     }))
 
                 elif data["type"] == "file":
-                    header, base64_data =  data["data"].split(",",1)
-                    file_data =  base64.b64decode(base64_data)
+                    header, base64_data = data["data"].split(",", 1)
+                    file_data = base64.b64decode(base64_data)
                     filename = f"{uuid.uuid4()}_{data['filename'].replace(' ', '_')}"
-                    filepath = os.path.join(UPLOAD_DIR,filename)
+                    filepath = os.path.join(UPLOAD_DIR, filename)
 
                     with open(filepath, "wb") as f:
                         f.write(file_data)
@@ -191,76 +212,43 @@ async def user_websocket_endpoint(websocket: WebSocket, receiverid : str, db: Se
                     )
 
                     await usermanager.send_msg(sender_id, receiver_id, {
+                        **stored_msg,
                         "type": "status_update",
-                        "message_id": stored_msg["id"],
-                        "timestamp": stored_msg["timestamp"],
-                        "sender": stored_msg["sender"],
-                        "content": stored_msg["content"],
-                        "file_url": stored_msg["file_url"],
                         "status": "sent"
                     })
 
-                    update_status("delivered", stored_msg["id"])
+                    update_status("delivered", stored_msg["message_id"])
 
                     await websocket.send_text(json.dumps({
+                        **stored_msg,
                         "type": "status_update",
-                        "message_id": stored_msg["id"],
-                        "timestamp": stored_msg["timestamp"],
-                        "sender": stored_msg["sender"],
-                        "content": stored_msg["content"],
-                        "file_url": stored_msg["file_url"],
                         "status": "delivered"
                     }))
 
                 elif data["type"] == "read":
                     message_id = data["message_id"]
-                    msg = db.query(Message).filter(Message.id == message_id).first()
-                    if msg and msg.receiver_id == sender_id:
-                        update_status("read", message_id)
-                        sender = db.query(User).filter(User.id == msg.sender_id).first()
-                        await websocket.send_text(json.dumps({
-                            "type": "status_update",
-                            "message_id": message_id,
-                            "timestamp": msg.sent_at.strftime("%Y-%m-%d %H:%M:%S"),
-                            "sender": sender.first_name + " " + sender.last_name,
-                            "content": msg.content,
-                            "file_url": msg.file_url,
-                            "status": "read"
-                        }))
-                        # Optionally, notify the sender via usermanager (if connected)
-                        await usermanager.send_msg(msg.sender_id, msg.receiver_id, {
-                            "type": "status_update",
-                            "message_id": message_id,
-                            "timestamp": msg.sent_at.strftime("%Y-%m-%d %H:%M:%S"),
-                            "sender": sender.first_name + " " + sender.last_name,
-                            "content": msg.content,
-                            "file_url": msg.file_url,
-                            "status": "read"
-                        })
+                    with get_db_session() as db:
+                        msg = db.query(Message).filter(Message.id == message_id).first()
+                        if msg and msg.receiver_id == sender_id:
+                            update_status("read", message_id)
+                            sender = db.query(User).filter(User.id == msg.sender_id).first()
+                            status_msg = build_message_dict(msg, f"{sender.first_name} {sender.last_name}", include_file_url_key=True, msg_type="status_update")
+                            status_msg["status"] = "read"
+                            await websocket.send_text(json.dumps(status_msg))
+                            # Notify sender if connected
+                            await usermanager.send_msg(msg.sender_id, msg.receiver_id, status_msg)
 
             except json.JSONDecodeError:
                 await websocket.send_text("Invalid JSON format.")
-                continue 
+                continue
     except WebSocketDisconnect:
         await usermanager.disconnect(sender_id, receiver_id, websocket)
-        print(userinfo.first_name,"disconnected")
+        print(userinfo.first_name, "disconnected")
 
-
-async def send_past_message(websocket : WebSocket, sender_id : int, receiver_id : int):
-    db = SessionLocal()
-    try:
+async def send_past_message(websocket: WebSocket, sender_id: int, receiver_id: int):
+    with get_db_session() as db:
         chat_history = (
-            db.query(
-                Message.id,
-                Message.content,
-                Message.file_url,
-                Message.file_type,
-                Message.sent_at,
-                Message.sender_id,
-                Message.status,
-                User.first_name,
-                User.last_name
-            )
+            db.query(Message, User.first_name, User.last_name)
             .join(User, Message.sender_id == User.id)
             .filter(
                 or_(
@@ -271,46 +259,13 @@ async def send_past_message(websocket : WebSocket, sender_id : int, receiver_id 
             .order_by(Message.sent_at)
             .all()
         )
-        for id,content, file_url, file_type, sent_at, sender_id,status, first_name, last_name in chat_history:
-            timestamp = sent_at.strftime("%Y-%m-%d %H:%M:%S")
-
-            if file_url:
-                if content:
-                    await websocket.send_text(json.dumps({
-                        "type" : "message_history",
-                        "message_id" : id,
-                        "timestamp" : timestamp,
-                        "sender" : first_name + last_name,
-                        "content" : content,
-                        "fileurl" : file_url,
-                        "status" : status
-                    }))
-                else:
-                    await websocket.send_text(json.dumps({
-                        "type" : "message_history",
-                        "message_id" : id,
-                        "timestamp" : timestamp,
-                        "sender" : first_name + last_name,
-                        "content" : None,
-                        "fileurl" : file_url,
-                        "status" : status
-                    }))
-            else:
-                await websocket.send_text(json.dumps({
-                    "type" : "message_history",
-                    "message_id" : id,
-                    "timestamp" : timestamp,
-                    "sender" : first_name + last_name,
-                    "content" : content,
-                    "file_url" : None,
-                    "status" : status
-                }))
-    finally:
-        db.close()
+        for msg, first_name, last_name in chat_history:
+            sender_name = f"{first_name} {last_name}"
+            msg_dict = build_message_dict(msg, sender_name)
+            await send_message(websocket, msg_dict)
 
 def store_and_return_msg(content: str, sender_id: int, receiver_id: int, file_url: str = None, file_type: str = None) -> dict:
-    db = SessionLocal()
-    try:
+    with get_db_session() as db:
         new_message = Message(
             content=content,
             sender_id=sender_id,
@@ -324,76 +279,14 @@ def store_and_return_msg(content: str, sender_id: int, receiver_id: int, file_ur
         db.refresh(new_message)
 
         user = db.query(User).filter(User.id == sender_id).first()
-        timestamp = new_message.sent_at.strftime("%Y-%m-%d %H:%M:%S")
+        sender_name = f"{user.first_name} {user.last_name}"
+        return build_message_dict(new_message, sender_name, include_file_url_key=False)
 
-        if new_message.file_url:
-            if new_message.content:
-                return{
-                    "id": new_message.id,
-                    "timestamp" : timestamp,
-                    "sender" : user.first_name + " " + user.last_name,
-                    "content" : new_message.content,
-                    "file_url" : new_message.file_url,
-                    "status" : new_message.status 
-                }
-            else:
-                return{
-                    "id": new_message.id,
-                    "timestamp" : timestamp,
-                    "sender" : user.first_name + " " + user.last_name,
-                    "content" : None,
-                    "file_url" : new_message.file_url,
-                    "status" : new_message.status 
-                }
-        else:
-                return{
-                    "id": new_message.id,
-                    "timestamp" : timestamp,
-                    "sender" : user.first_name + " " + user.last_name,
-                    "content" : new_message.content,
-                    "file_url" : None,
-                    "status" : new_message.status 
-                }
-    finally:
-        db.close()
-
-
-def update_status(status: str, id: int):
-    db = SessionLocal()
-    try:
-        msg = db.query(Message).filter(Message.id == id).first()
+def update_status(status: str, message_id: int):
+    with get_db_session() as db:
+        msg = db.query(Message).filter(Message.id == message_id).first()
         if msg:
             msg.status = status
             db.commit()
             return True
-        return False
-    finally:
-        db.close()
-
-@router.websocket("/readstatus")
-async def readstatus(messageid: int, receivertoken: str, websocket:WebSocket, db: Session = Depends(get_db)):
-    userinfo = verify_token(receivertoken, db)
-
-    msg = db.query(Message).filter(Message.id == messageid).first()
-    if not msg:
-        return {"error": "Message not found"}
-    if userinfo.id != msg.receiver_id:
-        return {"error": "Unauthorized"}
-
-    update_status("read", messageid)
-
-    sender_id = msg.sender_id
-    receiver_id = msg.receiver_id
-    timestamp = msg.sent_at.strftime("%Y-%m-%d %H:%M:%S")
-    sender = db.query(User).filter(User.id == sender_id).first()
-    await websocket.send_text(json.dumps({
-        "type": "status_update",
-        "message_id": messageid,
-        "timestamp": timestamp,
-        "sender": sender.first_name + " " + sender.last_name,
-        "content": msg.content,
-        "file_url": msg.file_url,
-        "status": "read"
-    }))
-
-    return {"message": "Status updated to read"}
+    return False
