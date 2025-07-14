@@ -290,3 +290,50 @@ def update_status(status: str, message_id: int):
             db.commit()
             return True
     return False
+
+# frontend-url = `ws://localhost:8000/readstatus?messageid=${messageId}&receivertoken=${receiverToken}`;
+# receivertoken mean logged in user ko token
+@router.websocket("/readstatus")
+async def readstatus(websocket: WebSocket, messageid: int, receivertoken: str, db: Session = Depends(get_db)):
+    await websocket.accept()
+
+    try:
+        userinfo = verify_token(receivertoken, db)
+        if not userinfo:
+            await websocket.send_text(json.dumps({"error": "Invalid token"}))
+            await websocket.close()
+            return
+
+        msg = db.query(Message).filter(Message.id == messageid).first()
+        if not msg:
+            await websocket.send_text(json.dumps({"error": "Message not found"}))
+            await websocket.close()
+            return
+
+        if userinfo.id != msg.receiver_id:
+            await websocket.send_text(json.dumps({"error": "Unauthorized"}))
+            await websocket.close()
+            return
+
+        # Update status
+        update_status("read", messageid)
+
+        sender = db.query(User).filter(User.id == msg.sender_id).first()
+        timestamp = msg.sent_at.strftime("%Y-%m-%d %H:%M:%S")
+
+        await websocket.send_text(json.dumps({
+            "type": "status_update",
+            "message_id": messageid,
+            "timestamp": timestamp,
+            "sender": f"{sender.first_name} {sender.last_name}",
+            "content": msg.content,
+            "file_url": msg.file_url,
+            "status": "read"
+        }))
+
+    except WebSocketDisconnect:
+        print("WebSocket disconnected")
+
+    except Exception as e:
+        await websocket.send_text(json.dumps({"error": str(e)}))
+        await websocket.close()
