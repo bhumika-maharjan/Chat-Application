@@ -15,11 +15,11 @@ def create_table(tableinfo: CreateTable, db: Session = Depends(get_db), user : U
     hashed_password = hash_password(tableinfo.password) if is_private else None
     # Step 1: Create chatroom
     new_room = Chatroom(
-    roomname=tableinfo.room_name,
-    is_private=is_private,
-    created_by=user.id,
-    password=hashed_password
-)
+        roomname=tableinfo.room_name,
+        is_private=is_private,
+        created_by=user.id,
+        password=hashed_password
+    )
     db.add(new_room)
     db.commit()
     db.refresh(new_room)
@@ -37,9 +37,16 @@ def create_table(tableinfo: CreateTable, db: Session = Depends(get_db), user : U
 
 @router.get("/getgroups")
 def get_room(db: Session = Depends(get_db)):
-    chat_room_names = db.query(Chatroom.roomname).all()
-    room_list = [room[0] for room in chat_room_names]  # Extract values from tuples
-    return {"chatrooms": room_list}
+    chat_rooms = db.query(Chatroom).all()
+    
+    room_list = [{
+        "id": room.id,
+        "name": room.roomname,
+        "image_url": None  # This can be None/null
+    } for room in chat_rooms]
+
+    return {"rooms": room_list}
+
 
 @router.post("/joingroup")
 def join_room(members: JoinRoom, db: Session = Depends(get_db), user : User = Depends(get_current_user)):
