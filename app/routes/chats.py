@@ -42,11 +42,13 @@ async def create_table(
 
     # Step 1: Create chatroom
     new_room = Chatroom(
+
         roomname=room_name,
         is_private=is_private,
         created_by=user.id,
         password=hashed_password,
         image=filename,
+
     )
     db.add(new_room)
     db.commit()
@@ -62,9 +64,16 @@ async def create_table(
 
 @router.get("/getgroups")
 def get_room(db: Session = Depends(get_db)):
-    chat_room_names = db.query(Chatroom.roomname).all()
-    room_list = [room[0] for room in chat_room_names]  # Extract values from tuples
-    return {"chatrooms": room_list}
+    chat_rooms = db.query(Chatroom).all()
+    
+    room_list = [{
+        "id": room.id,
+        "name": room.roomname,
+        "image_url": None  # This can be None/null
+    } for room in chat_rooms]
+
+    return {"rooms": room_list}
+
 
 
 @router.post("/joingroup")
