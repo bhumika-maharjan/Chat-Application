@@ -3,7 +3,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.database import engine
+
 from app.routes import auth, chats, communication, home, profile, search, user_to_user
+
 from database.models import Base
 
 Base.metadata.create_all(bind=engine)
@@ -26,6 +28,7 @@ app.include_router(communication.router)
 app.include_router(auth.router)
 app.include_router(profile.router)
 app.include_router(search.router)
+app.include_router(user_to_user.router)
 
 app.mount(
     "/profile_images",
