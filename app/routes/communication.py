@@ -2,28 +2,6 @@ import base64
 import json
 import os
 import uuid
-
-from fastapi import (
-    APIRouter,
-    Depends,
-    Header,
-    HTTPException,
-    WebSocket,
-    WebSocketDisconnect,
-)
-from fastapi.responses import HTMLResponse
-from sqlalchemy.orm import Session
-
-from app.database import SessionLocal, get_db
-from app.connection_manager import ConnectionManager
-from database.models import RoomMembers, Message, User, Chatroom
-from app.utils import get_current_user, check_user_inroom, verify_token, verify_password
-from sqlalchemy.orm import Session
-import json
-import base64
-import json
-import os
-import uuid
 from datetime import datetime
 
 from fastapi import (
@@ -263,7 +241,7 @@ html = """
 </html>
 """
 
-UPLOAD_DIR = "uploads"
+UPLOAD_DIR = os.path.join("uploads", "messages")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
